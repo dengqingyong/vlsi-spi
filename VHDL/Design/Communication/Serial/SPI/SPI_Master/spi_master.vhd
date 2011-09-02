@@ -10,7 +10,9 @@
 --				The following registers can be modified during normal operation, when there
 --				is no active transmission:
 --				(*)	Configuration Register - to configure CPOL and CPHA
---				(*) Clock Divide Register - to configure system clock divide rate to the SPI clock.
+--				(*) Clock Divide Register - to configure system clock divide rate to the SPI clock:
+--						When this register is '1', then divide rate is 2,
+--						When this register is '2', then divide rate is 3, etc...
 --
 -- Requirements:
 --	 	(*)	Reset deactivation MUST be synchronized to the clock's rising edge!
@@ -38,7 +40,7 @@ entity spi_master is
 				num_of_slaves_g		:	positive	:= 1;		--Number of slaves (determines SPI_SS bus width)
 				reg_width_g			:	positive	:= 8;		--Number of bits in SPI Clock Divider Register
 				dval_conf_reg_g		:	natural		:= 0;		--Default (initial) value of Configuration Register
-				dval_clk_reg_g		:	natural		:= 2;		--Default (initial) value of Clock Divide Register
+				dval_clk_reg_g		:	positive range 2 to positive'high		:= 2;		--Default (initial) value of Clock Divide Register (Divide system clock by 2 is the minimum)
 				reg_addr_width_g	:	positive	:= 8;		--Registers Configuration Address Width
 				reg_din_width_g 	:	positive	:= 8;		--Registers Configuration Input Data Width
 				first_dat_lsb		:	boolean		:= true	--TRUE: Transmit and Receive LSB first. FALSE - MSB first
@@ -103,6 +105,7 @@ architecture rtl_spi_master of spi_master is
 	signal sr_cnt_in_d1	:		natural range 0 to data_width_g;				--Derive of sr_cnt_in
 	signal fifo_req_sr	:		std_logic_vector (1 downto 0);					--Bit 0 => when '1' - indicates that FIFO_DIN_VALID should be asserted
 	signal int_spi_ss	:		std_logic_vector (num_of_slaves_g - 1 downto 0);--Inernal Slave Select
+	signal int_ss_adr	:		natural range 0 to (num_of_slaves_g - 1);		--Internal Address Slave
 	
 	-- Configuration Registers
 	signal div_reg		:		std_logic_vector (reg_width_g - 1 downto 0);
@@ -142,7 +145,7 @@ begin
 			dout_valid	<=	'0';
 		elsif rising_edge (clk) then
 			sr_cnt_in_d1	<=	sr_cnt_in;
-			if (sr_cnt_in_d1 /= sr_cnt_in) then	--Different values ==> DOUT is valid
+			if (sr_cnt_in_d1 = data_width_g) and (sr_cnt_in_d1 /= sr_cnt_in) then	--Different values ==> DOUT is valid
 				dout		<=	spi_sr_in;
 				dout_valid	<=	'1';
 			else
@@ -156,19 +159,23 @@ begin
 	spi_ss_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
-			int_spi_ss		<= (others => (not ss_polarity_g));
+			int_spi_ss							<= (others => (not ss_polarity_g));
+			int_ss_adr							<=	0;
 		
 		elsif rising_edge(clk) then
 			if (cur_st = assert_ss_st) then
-				int_spi_ss		<= (others => (not ss_polarity_g));
-				int_spi_ss (spi_slave_addr)	<= ss_polarity_g;	
+				int_spi_ss						<= (others => (not ss_polarity_g));
+				int_spi_ss (spi_slave_addr)		<= ss_polarity_g;	
+				int_ss_adr						<= spi_slave_addr;
 				
 			elsif (cur_st = data_st) then
-				int_spi_ss	<= int_spi_ss;
-				int_spi_ss		<= (others => (not ss_polarity_g));
+				int_spi_ss						<= (others => (not ss_polarity_g));
+				int_spi_ss (int_ss_adr)			<= ss_polarity_g;	
+				int_ss_adr						<= int_ss_adr;
 
 			else
-				int_spi_ss		<= (others => (not ss_polarity_g));
+				int_spi_ss						<= (others => (not ss_polarity_g));
+				int_ss_adr						<= int_ss_adr;
 			end if;
 		end if;
 	end process spi_ss_proc;
@@ -239,10 +246,14 @@ begin
 					cur_st	<=	data_st;
 				
 				when data_st	=>
-					if (fifo_din_valid = '0') and (fifo_req_sr (0) = '1') then	--ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
+					if (sr_cnt_in = 0) and (sr_cnt_out = 0) and (fifo_empty = '1') then
+				    	cur_st	<= idle_st;
+					elsif (fifo_din_valid = '0') and (fifo_req_sr (0) = '1') then	--ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
 				    	cur_st	<= idle_st;
 						report "Time: " & time'image(now) & ", SPI Master >> Expecting FIFO_DIN_VALID = '1' but it is '0'. Aborting Transmission"
 						severity error;
+					else
+						cur_st	<=	cur_st;
 					end if;
 						
 				when others		=> --No more states
@@ -259,7 +270,7 @@ begin
 	begin
 		if (rst = reset_polarity_g) then
 			conf_reg	<=	conv_std_logic_vector (dval_conf_reg_g, reg_width_g);
-			div_reg		<=	conv_std_logic_vector (dval_clk_reg_g, reg_width_g);
+			div_reg		<=	conv_std_logic_vector (dval_clk_reg_g - 2, reg_width_g);
 			int_rst		<=	'0';
 			
 		elsif rising_edge(clk) then
@@ -276,12 +287,14 @@ begin
 					int_rst	<= '1';
 					case reg_addr_v is
 						when div_reg_addr_c		=>	--Write to Clock Divide Register
-							div_reg		<= reg_din;
+							div_reg		<= reg_din - "10";
 							reg_ack		<= '1';
+							reg_err		<= '0';
 						
 						when conf_reg_addr_c	=>	--Write to Configuration Register
 							conf_reg	<= reg_din;
 							reg_ack		<= '1';
+							reg_err		<= '0';
 	
 						when others 			=>	--No such address
 							reg_ack		<= '0';
@@ -294,7 +307,7 @@ begin
 			else	--No action should be taken
 				reg_ack	<= '0';
 				reg_err	<= '0';
-				int_rst	<= '1';
+				int_rst	<= '0';
 			end if;
 		end if;
 	end process spi_conf_reg_proc;
@@ -313,10 +326,19 @@ begin
 			if (cur_st = load_sr_st) then	--Load Shift Register. NOTE: (fifo_din_valid = '1') condition is not validated, since in case it is '0', current state will not change, so the input data is not relevant.
 											--							In that way, the tPD between to FF here will diminish
 				spi_sr_out	<=	fifo_din;
+				sr_cnt_in	<=	0;
+				sr_cnt_out	<=	0;
 			elsif (cur_st = data_st) then	--TX data
 				--Load SR at end of burst
 				if (sr_cnt_out = 0) and (fifo_din_valid = '1') then
 					spi_sr_out	<=	fifo_din;
+					--Input SR Counter (Check for Zero)
+					if (sr_cnt_in = data_width_g) then
+						sr_cnt_in	<=	0;
+					else
+						sr_cnt_in 	<= sr_cnt_in;
+					end if;
+
 				-----	Propagate Data	-----
 				elsif (prop_en = '1') then
 					--Output SR Counter
@@ -326,7 +348,7 @@ begin
 					if (sr_cnt_in = data_width_g) then
 						sr_cnt_in	<=	0;
 					else
-						sr_cnt_in <= sr_cnt_in;
+						sr_cnt_in 	<= sr_cnt_in;
 					end if;
 					
 					--TX Data
@@ -406,14 +428,18 @@ begin
 	spi_clk_cnt: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
-			clk_cnt	<=	(others => '0');
+			clk_cnt	<=	'0' & conv_std_logic_vector (dval_clk_reg_g - 2, reg_addr_width_g);
 		
 		elsif rising_edge(clk) then
-			if (clk_cnt (reg_width_g) = '1') then --Clock should be inverted
+			if (cur_st = assert_ss_st) then
+				clk_cnt	<=	'0' & div_reg (reg_width_g - 1 downto 0);
+			elsif (clk_cnt (reg_width_g) = '1') then --Clock should be inverted
 				clk_cnt (reg_width_g) 	<= '0';
 				clk_cnt	(reg_width_g - 1 downto 0)	<= div_reg	(reg_width_g - 1 downto 0); --TODO: Think about how many cycles...
-			else
+			elsif (cur_st = data_st) then
 				clk_cnt	<= clk_cnt - '1';
+			else
+				clk_cnt	<=	clk_cnt;
 			end if;
 		end if;
 	end process spi_clk_cnt;
@@ -435,7 +461,7 @@ begin
 					prop_en	<= '0';
 				end if;
 			else
-				prop_en		<= prop_en;
+				prop_en		<= '0';
 			end if;
 		end if;
 	end process prop_en_proc;
@@ -458,7 +484,7 @@ begin
 					samp_en	<= '0';
 				end if;
 			else
-				samp_en		<= samp_en;
+				samp_en		<= '0';
 			end if;
 		end if;
 	end process samp_en_proc;
