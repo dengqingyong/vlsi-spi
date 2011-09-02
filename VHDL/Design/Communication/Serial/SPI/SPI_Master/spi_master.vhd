@@ -10,9 +10,11 @@
 --				The following registers can be modified during normal operation, when there
 --				is no active transmission:
 --				(*)	Configuration Register - to configure CPOL and CPHA
+-- 					(-) Bit 0	-	CPHA
+-- 					(-) Bit 1	-	CPOL
 --				(*) Clock Divide Register - to configure system clock divide rate to the SPI clock:
---						When this register is '1', then divide rate is 2,
---						When this register is '2', then divide rate is 3, etc...
+--					(-)	When this register is '1', then divide rate is 2,
+--					(-)	When this register is '2', then divide rate is 3, etc...
 --
 -- Requirements:
 --	 	(*)	Reset deactivation MUST be synchronized to the clock's rising edge!
@@ -108,8 +110,8 @@ architecture rtl_spi_master of spi_master is
 	signal int_ss_adr	:		natural range 0 to (num_of_slaves_g - 1);		--Internal Address Slave
 	
 	-- Configuration Registers
-	signal div_reg		:		std_logic_vector (reg_width_g - 1 downto 0);
-	signal conf_reg		:		std_logic_vector (reg_width_g - 1 downto 0);
+	signal div_reg		:		std_logic_vector (reg_width_g - 1 downto 0);	--Divide System Clock by (this number - 2)
+	signal conf_reg		:		std_logic_vector (reg_width_g - 1 downto 0);	--Configuration Register (CPOL, CPHA at this implementation)
 	
 	--Clock & Internal Reset:
 	signal spi_clk_i	:		std_logic;										--Internal SPI_CLK
@@ -130,14 +132,21 @@ architecture rtl_spi_master of spi_master is
 
 begin
 	
+	-------------------------		Hidden Processes	----------------------
 	spi_clk_out_proc:
 	spi_clk	<= 	spi_clk_i when spi_clk_en
 				else cpol;
 	
 	spi_ss_out_proc:
 	spi_ss	<=	int_spi_ss;
-	--------------------------
-	
+
+
+	--------------------------------------------------------------------------
+	-------------------------		dout_proc proces	----------------------
+	--------------------------------------------------------------------------
+	-- This process assert DOUT_VALID, when data from SPI Slave is available.
+	-- Relevant data may be read through DOUT port.
+	--------------------------------------------------------------------------
 	dout_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -154,8 +163,12 @@ begin
 		end if;
 	end process dout_proc;
 
-	--------------------------
-	
+	--------------------------------------------------------------------------
+	-------------------------		spi_ss_proc proces	----------------------
+	--------------------------------------------------------------------------
+	-- This process latches the Slave Select Address and Slave Select
+	-- Negation at transaction initialization.
+	--------------------------------------------------------------------------
 	spi_ss_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -180,8 +193,13 @@ begin
 		end if;
 	end process spi_ss_proc;
 	
-	--------------------------
-	
+	--------------------------------------------------------------------------
+	-------------------------	spi_clk_en_proc proces	----------------------
+	--------------------------------------------------------------------------
+	-- This process enables / disables the SPI_CLK.
+	-- SPI Clock will be enabled when asserting SPI_SS, and during data
+	-- transmission.
+	--------------------------------------------------------------------------
 	spi_clk_en_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -196,7 +214,12 @@ begin
 		end if;
 	end process spi_clk_en_proc;
 	
-	--------------------------
+	--------------------------------------------------------------------------
+	-------------------------	fifo_data_proc proces	----------------------
+	--------------------------------------------------------------------------
+	-- This process asserts FIFO_REQ_DATA (Request for data from FIFO) when
+	-- the SPI Master Shift Register should be loaded.
+	--------------------------------------------------------------------------
 	fifo_data_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -224,7 +247,11 @@ begin
 		end if;
 	end process fifo_data_proc;
 
-	--------------------------
+	--------------------------------------------------------------------------
+	-------------------------	fsm_proc proces		--------------------------
+	--------------------------------------------------------------------------
+	-- This process is the main FSM process.
+	--------------------------------------------------------------------------
 	fsm_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -264,7 +291,15 @@ begin
 		end if;
 	end process fsm_proc;
 	
-	--------------------------
+	--------------------------------------------------------------------------
+	------------------	spi_conf_reg_proc proces	--------------------------
+	--------------------------------------------------------------------------
+	-- This process stores data to Configuration and Clock Devide Registers.
+	-- REG_ACK (Register Acknowledged) or REG_ERR (Register Error) will be
+	-- asserted as required.
+	-- During write phase, the SPI Master will assert INT_RST (Internal Reset),
+	-- to prevent transmission during configuration change.
+	--------------------------------------------------------------------------
 	spi_conf_reg_proc: process (clk, rst)
 	variable reg_addr_v		:	natural range 0 to 2**reg_addr_width_g - 1;
 	begin
@@ -312,7 +347,12 @@ begin
 		end if;
 	end process spi_conf_reg_proc;
 
-	--------------------------
+	--------------------------------------------------------------------------
+	--------------------------	spi_sr_proc proces	--------------------------
+	--------------------------------------------------------------------------
+	-- This process handles with the input / output Shift Registers, as well
+	-- as the SPI_MOSI, which is fed from the Shift Register.
+	--------------------------------------------------------------------------
 	spi_sr_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -324,7 +364,7 @@ begin
 		
 		elsif rising_edge(clk) then
 			if (cur_st = load_sr_st) then	--Load Shift Register. NOTE: (fifo_din_valid = '1') condition is not validated, since in case it is '0', current state will not change, so the input data is not relevant.
-											--							In that way, the tPD between to FF here will diminish
+											--	In that way, the tPD between to FF here will diminish
 				spi_sr_out	<=	fifo_din;
 				sr_cnt_in	<=	0;
 				sr_cnt_out	<=	0;
@@ -405,7 +445,12 @@ begin
 	end process spi_sr_proc;
 
 
-	-------------------------------------------------------------------
+	--------------------------------------------------------------------------
+	--------------------------	spi_clk_proc proces	--------------------------
+	--------------------------------------------------------------------------
+	-- This process determines whether the SPI_CLK should be '1' or '0',
+	-- according to CPOL and current divide clock counter.
+	--------------------------------------------------------------------------
 	spi_clk_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -424,8 +469,14 @@ begin
 		end if;
 	end process spi_clk_proc;
 	
-	--------------------------
-	spi_clk_cnt: process (clk, rst)
+	--------------------------------------------------------------------------
+	--------------------------	spi_clk_cnt_proc proces	----------------------
+	--------------------------------------------------------------------------
+	-- This process handles with a clock counter, which count backwords the
+	-- number of System Clock's rising edges, in order to divide the System
+	-- Clock to SPI_CLK.
+	--------------------------------------------------------------------------
+	spi_clk_cnt_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
 			clk_cnt	<=	'0' & conv_std_logic_vector (dval_clk_reg_g - 2, reg_addr_width_g);
@@ -442,8 +493,16 @@ begin
 				clk_cnt	<=	clk_cnt;
 			end if;
 		end if;
-	end process spi_clk_cnt;
-	--------------------------
+	end process spi_clk_cnt_proc;
+	
+	
+	--------------------------------------------------------------------------
+	--------------------------	prop_en_proc proces	--------------------------
+	--------------------------------------------------------------------------
+	-- This process asserts / negates Data Propagation Enable signal,
+	-- according to CPOL, CPHA and SPI_CLK.
+	-- When PROP_EN = '1', then data will be propagated to the SPI Slave.
+	--------------------------------------------------------------------------
 	prop_en_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -466,7 +525,13 @@ begin
 		end if;
 	end process prop_en_proc;
 
-	--------------------------
+	--------------------------------------------------------------------------
+	--------------------------	samp_en_proc proces	--------------------------
+	--------------------------------------------------------------------------
+	-- This process asserts / negates Data Sample Enable signal, according to
+	-- CPOL, CPHA and SPI_CLK.
+	-- When SAMP_EN = '1', then data will be sampled from the SPI Slave.
+	--------------------------------------------------------------------------
 	samp_en_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
@@ -488,4 +553,5 @@ begin
 			end if;
 		end if;
 	end process samp_en_proc;
+	
 end architecture rtl_spi_master;
