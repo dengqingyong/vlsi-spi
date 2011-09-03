@@ -229,7 +229,7 @@ begin
 			if (cur_st = idle_st) and (fifo_empty = '0') then	--Request for data
 				fifo_req_data	<= '1';
 				fifo_req_sr	(0) <= fifo_req_sr (1);
-				fifo_req_sr (1)	<= '0';
+				fifo_req_sr (1)	<= '1';
 			elsif (cur_st = data_st) then
 				if (sr_cnt_out = data_width_g) and (fifo_empty = '0') then
 					fifo_req_data	<= '1';						--End of SR TX. Request for data from FIFO
@@ -270,14 +270,22 @@ begin
 					cur_st	<=	assert_ss_st;
 					
 				when assert_ss_st =>
-					cur_st	<=	data_st;
+					if ((fifo_din_valid = '0') and (fifo_req_sr (0) = '1'))	then --ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
+				    	cur_st	<= idle_st;
+						report "Time: " & time'image(now) & ", SPI Master >> Expecting FIFO_DIN_VALID = '1' but it is '0'" & LF
+						& "Aborting Transmission"
+						severity error;
+					else
+						cur_st	<=	data_st;
+					end if;
 				
 				when data_st	=>
 					if (sr_cnt_in = 0) and (sr_cnt_out = 0) and (fifo_empty = '1') then
 				    	cur_st	<= idle_st;
-					elsif (fifo_din_valid = '0') and (fifo_req_sr (0) = '1') then	--ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
+					elsif ((fifo_din_valid = '0') and (fifo_req_sr (0) = '1'))	then --ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
 				    	cur_st	<= idle_st;
-						report "Time: " & time'image(now) & ", SPI Master >> Expecting FIFO_DIN_VALID = '1' but it is '0'. Aborting Transmission"
+						report "Time: " & time'image(now) & ", SPI Master >> Expecting FIFO_DIN_VALID = '1' but it is '0'" & LF
+						& "Aborting Transmission"
 						severity error;
 					else
 						cur_st	<=	cur_st;
@@ -322,9 +330,17 @@ begin
 					int_rst	<= '1';
 					case reg_addr_v is
 						when div_reg_addr_c		=>	--Write to Clock Divide Register
-							div_reg		<= reg_din - "10";
-							reg_ack		<= '1';
-							reg_err		<= '0';
+							if (conv_integer (reg_din)	> 1) then
+								div_reg		<= reg_din - "10"; -- (-2 which is minimum divide factor)
+								reg_ack		<= '1';
+								reg_err		<= '0';
+							else
+								div_reg		<= div_reg;
+								reg_ack		<= '0';
+								reg_err		<= '1';
+								report "Time: " & time'image(now) & ", SPI Master >> Register number " & natural'image (reg_addr_v) & " (Divide Register): Only values greater or equal to 2 are allowed"
+								severity error;
+							end if;
 						
 						when conf_reg_addr_c	=>	--Write to Configuration Register
 							conf_reg	<= reg_din;
