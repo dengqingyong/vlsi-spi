@@ -98,7 +98,7 @@ signal spi_ss			:	std_logic_vector (num_of_slaves_g - 1 downto 0);
 
 signal fifo_req_data	:	std_logic;											
 signal fifo_din			:	std_logic_vector (data_width_g - 1 downto 0);		
-signal fifo_din_valid	:	std_logic;											
+signal fifo_din_valid	:	std_logic := '0';											
 signal fifo_empty		:	std_logic;											
 
 signal spi_slave_addr	:	natural range 0 to (num_of_slaves_g - 1);
@@ -120,6 +120,20 @@ clk	<=	not clk after 1 sec / (real(clk_period_g*2));
 
 rst_proc:
 rst	<=	reset_polarity_g, not reset_polarity_g after 100 ns;
+
+change_div_rate_proc: process 
+begin
+	wait for 1.4 us;
+	wait until rising_edge (clk);
+	reg_addr	<=	x"00";
+	reg_din		<=	x"04";
+	reg_din_val	<=	'1';
+	wait until rising_edge (clk);
+	reg_addr	<=	x"00";
+	reg_din		<=	x"00";
+	reg_din_val	<=	'0';
+	wait;
+end process change_div_rate_proc;
 
 fifo_empty_proc: process
 begin
