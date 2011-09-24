@@ -7,7 +7,8 @@
 ------------------------------------------------------------------------------------------------
 -- Description: This is SPI Master. As long as the input FIFO is not empty, data will be
 --				transmitted to the relevant SPI Slave, which is determined by SPI slave address.
---				The following registers can be modified during normal operation, when there
+--				When transaction is active 'BUSY' signall will be '1'.
+--				The following registers may be modified during normal operation, when there
 --				is no active transmission:
 --				(*)	Configuration Register - to configure CPOL and CPHA
 -- 					(-) Bit 0	-	CPHA
@@ -76,6 +77,7 @@ entity spi_master is
 				reg_err				:	out	std_logic;											--Error while trying to write data to registers
 				
 				-- Output from SPI Master
+				busy				:	out std_logic;											--'1' - BUSY: Transaction is active
 				dout				:	out std_logic_vector (data_width_g - 1 downto 0);		--Output data
 				dout_valid			:	out std_logic											--Output data is valid
 			);
@@ -139,6 +141,10 @@ begin
 	
 	spi_ss_out_proc:
 	spi_ss	<=	int_spi_ss;
+	
+	busy_proc:
+	busy	<= '0' when (cur_st = idle_st)
+				else '1';
 
 
 	--------------------------------------------------------------------------
