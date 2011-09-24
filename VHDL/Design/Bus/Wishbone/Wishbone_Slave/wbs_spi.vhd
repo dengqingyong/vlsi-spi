@@ -33,7 +33,9 @@ entity wbs_spi is
 		reset_polarity_g		:	std_logic	:= '0';									--RESET is active low
 		data_width_g			:	positive	:= 8;									--Data width
 		blen_width_g			:	positive	:= 9;									--Burst length width (maximum 2^9=512Kbyte Burst)
-		addr_width_g			:	positive	:= 10									--Address width
+		addr_width_g			:	positive	:= 10;									--Address width
+		reg_addr_width_g		:	positive	:= 8;									--SPI Registers address width
+		reg_din_width_g			:	positive	:= 8									--SPI Registers data width
 	);								
 	port 								
 	(								
@@ -81,7 +83,12 @@ entity wbs_spi is
 		ram_dec_aout_val		:	out std_logic;										--Output address to RAM is valid (request for data)
 		
 		--SPI Interface
-		spi_we					:	out std_logic										--Write Enable. In case of '0' (Reading) - SPI will be commanded to transfer garbage data, in order to receive valid data
+		spi_we					:	out std_logic;										--Write Enable. In case of '0' (Reading) - SPI will be commanded to transfer garbage data, in order to receive valid data
+		spi_reg_addr			:	out std_logic_vector (reg_addr_width_g - 1 downto 0);	--Address to registers
+		spi_reg_din				:	out std_logic_vector (reg_din_width_g - 1 downto 0);		--Data to registers
+		spi_reg_din_val			:	out std_logic;											--Data to registers is valid
+		spi_reg_ack				:	in	std_logic;										--SPI Registers - data acknowledged
+		spi_reg_err				:	in	std_logic										--SPI Registers - error while writing data to SPI
 	);
 end entity wbs_spi;
 
@@ -94,6 +101,8 @@ constant type_rd_c		:	std_logic_vector (data_width_g - 1 downto 0) := x"02";	--R
 ----------------------------------	Types	-----------------------------------
 type fsm_states is
 					(	idle_st,		--Idle
+						reg_wr_st,		--Writing to SPI Registers
+						reg_done_st,	--Expected : spi_reg_ack or spi_reg_err
 						rx_prep_ram_st,	--Prepare RX: Write to RAM the required burst length
 						rx_cmd_st,		--Transmit Read command
 						rx_wait_data_st,--Wait until data from SPI is ready for reading (in RAM)
@@ -167,6 +176,40 @@ begin
 	end if;
 end process wbs_ack_o_proc;
 
+--SPI Register process
+spi_reg_proc: process (clk_i, rst)
+begin
+	if (rst = reset_polarity_g) then
+		spi_reg_addr		<=	(others => '0');
+		spi_reg_din			<=	(others => '0');
+		spi_reg_din_val		<=	'0';
+	
+	elsif rising_edge (clk_i) then
+		if (cur_st = reg_wr_st) then	--Write to registers
+			if (reg_addr_width_g <= addr_width_g) then	--SPI Register width <= Register width
+				spi_reg_addr (reg_addr_width_g - 1 downto 0)	<=	wbs_adr_i (reg_addr_width_g - 1 downto 0);
+			else										--SPI Register width > Register width
+				spi_reg_addr (addr_width_g - 1 downto 0)	<=	wbs_adr_i (addr_width_g - 1 downto 0);
+				spi_reg_addr (reg_addr_width_g - 1 downto addr_width_g) <= (others => '0');
+			end if;
+
+			if (reg_din_width_g <= data_width_g) then	--SPI Data width <= Register width
+				spi_reg_din (reg_din_width_g - 1 downto 0)	<=	wbs_dat_i (reg_din_width_g - 1 downto 0);
+			else										--SPI Data width > Register width
+				spi_reg_din (data_width_g - 1 downto 0)	<=	wbs_dat_i (data_width_g - 1 downto 0);
+				spi_reg_din (reg_din_width_g - 1 downto data_width_g) <= (others => '0');
+			end if;
+			
+			spi_reg_din_val	<=	'1';
+		
+		else
+			spi_reg_addr		<=	(others => '0');
+			spi_reg_din			<=	(others => '0');
+			spi_reg_din_val		<=	'0';
+		end if;
+	end if;
+end process spi_reg_proc;
+
 --RAM for Encoder Signals' Process
 ram_enc_proc: process (clk_i, rst)
 variable ram_val_v	:	std_logic_vector (data_width_g - 1 downto 0);
@@ -227,16 +270,36 @@ begin
 	elsif rising_edge(clk_i) then
 		case cur_st is
 			when idle_st	=>
-				if (wbs_cyc_i = '1') then			--Start of Wishbone Cycle
-					if (wbs_we_i = '1') then
-						cur_st	<=	neg_stall_st;	--Negate STALL
-					else
-						cur_st	<=	rx_prep_ram_st;	--Prepare RAM for burst length
+				if (wbs_cyc_i = '1') then				--Start of Wishbone Cycle
+					if (wbs_tgc_i = '0') then			--SPI transmission
+						if (wbs_we_i = '1') then
+							cur_st	<=	neg_stall_st;	--Negate STALL
+						else
+							cur_st	<=	rx_prep_ram_st;	--Prepare RAM for burst length
+						end if;
+					else								--Registers Transmission
+						if (wbs_we_i = '1') then
+							cur_st	<=	reg_wr_st;
+						else
+							cur_st	<=	cur_st;
+							report "Time: " & time'image (now) & ", WBS_SPI >> idle_st: Read from registers is not supported."
+							severity error;
+						end if;
 					end if;
 				else
 					cur_st	<=	cur_st;
 				end if;
 				
+			when reg_wr_st =>
+				cur_st	<=	reg_done_st;
+				
+			when reg_done_st =>
+				if (spi_reg_err = '1') then
+					report "Time: " & time'image (now) & ", WBS_SPI >> reg_done_st: Error while writing to SPI registers."
+					severity error;
+				end if;
+				cur_st	<=	idle_st;
+			
 			when rx_prep_ram_st	=>
 				if blen_sr_b then
 					cur_st	<=	rx_cmd_st;
@@ -367,8 +430,11 @@ begin
 			else
 				wbs_ack_o		<=	'0';
 			end if;
+		elsif (cur_st = reg_done_st)	--Wait for ACK / ERR from SPI Registers
+			and ((spi_reg_ack = '0') or (spi_reg_err = '1')) then
+			wbs_err_o	<=	'1';
 		else
-			wbs_ack_o			<=	'0';
+			wbs_err_o			<=	'0';
 		end if;
 	end if;
 end process wbs_err_o_proc;
