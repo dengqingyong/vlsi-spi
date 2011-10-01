@@ -13,6 +13,10 @@
 --				Type Commands, in the Message Pack:
 --					(*) x"01"	:	Write
 --					(*) x"02"	:	Read
+--
+--				Tag Cycle (WBS_TGC)
+--					(*) '1'		:	Write to SPI Registers
+--					(*) '0'		:	Transmit / Receive using SPI
 ------------------------------------------------------------------------------------------------
 -- Revision:
 --			Number		Date		Name					Description			
@@ -120,6 +124,8 @@ signal tx_cnt			:	std_logic_vector (blen_width_g downto 0);		--TX Counter. Extra
 signal rx_cnt			:	std_logic_vector (blen_width_g downto 0);		--RX Counter. Extra 1 bit, for comparing MSB to '1' (Reverse counting)
 signal rx_blen			:	std_logic_vector (blen_width_g - 1 downto 0);	--RX Burst Length, writing to RAM
 signal blen_sr_b		:	boolean;										--TRUE - All length has been transmissted to RAM (rx_blen = 0), FALSE otherwise
+signal int_cyc			:	std_logic;										--Internal WBS_CYC, for validating end of cycle
+signal int_cyc_d1		:	std_logic;										--Internal WBS_CYC (with one clock delay), for validating end of cycle
 signal int_ram_enc_addr	:	std_logic_vector (blen_width_g - 1 downto 0);	--Internal ram_enc_addr
 signal int_ram_dec_addr	:	std_logic_vector (blen_width_g - 1 downto 0);	--Internal ram_dec_addr
 
@@ -142,13 +148,35 @@ ram_dec_addr	<=	int_ram_dec_addr;
 wbs_dat_o_proc:
 wbs_dat_o	<=	ram_dec_dout;
 
+--INT_CYC_d1_Process:
+--int_cyc will assert at idle_st, at start of cycle, and negate when cycle is done,
+--until next idle_st + wbs_cyc_i
+int_cyc_d1_proc: process (clk_i, rst)
+begin
+	if (rst = reset_polarity_g) then
+		int_cyc_d1	<=	'0';
+	elsif rising_edge (clk_i) then
+		if (cur_st = idle_st) and (wbs_cyc_i = '1') then	--Start of cycle
+			int_cyc_d1	<=	'1';
+		elsif (wbs_cyc_i = '0') then
+			int_cyc_d1	<=	'0';
+		else
+			int_cyc_d1	<=	int_cyc_d1;
+		end if;
+	end if;
+end process int_cyc_d1_proc;
+
+--INT_CYC_Proc
+int_cyc_proc:
+int_cyc	<=	int_cyc_d1 and wbs_cyc_i;
+
 --WBS_STALL_O
 wbs_stall_o_proc: process (clk_i, rst)
 begin
 	if (rst = reset_polarity_g) then
 		wbs_stall_o	<=	'1';
 	elsif rising_edge (clk_i) then
-		if (cur_st = end_tx_st) or (cur_st = end_rx_st) then --idle_st is not required, since it will already be there at '1'
+		if (cur_st = end_tx_st) or (cur_st = end_rx_st) or (cur_st = reg_done_st) then --idle_st is not required, since it will already be there at '1'
 			wbs_stall_o	<=	'1';
 		elsif (cur_st = neg_stall_st) then
 			wbs_stall_o	<=	'0';
@@ -177,7 +205,15 @@ begin
 end process wbs_ack_o_proc;
 
 --SPI Register process
-spi_reg_proc: process (clk_i, rst)
+width_assert_addr:
+assert (reg_addr_width_g <= addr_width_g)
+	report "'reg_addr_width_g' must be less or equal to 'addr_width_g'" severity failure;
+
+width_assert_din:
+assert (reg_din_width_g <= data_width_g)
+	report "'reg_din_width_g' must be less or equal to 'data_width_g'" severity failure;
+
+	spi_reg_proc: process (clk_i, rst)
 begin
 	if (rst = reset_polarity_g) then
 		spi_reg_addr		<=	(others => '0');
@@ -186,21 +222,9 @@ begin
 	
 	elsif rising_edge (clk_i) then
 		if (cur_st = reg_wr_st) then	--Write to registers
-			if (reg_addr_width_g <= addr_width_g) then	--SPI Register width <= Register width
-				spi_reg_addr (reg_addr_width_g - 1 downto 0)	<=	wbs_adr_i (reg_addr_width_g - 1 downto 0);
-			else										--SPI Register width > Register width
-				spi_reg_addr (addr_width_g - 1 downto 0)	<=	wbs_adr_i (addr_width_g - 1 downto 0);
-				spi_reg_addr (reg_addr_width_g - 1 downto addr_width_g) <= (others => '0');
-			end if;
-
-			if (reg_din_width_g <= data_width_g) then	--SPI Data width <= Register width
-				spi_reg_din (reg_din_width_g - 1 downto 0)	<=	wbs_dat_i (reg_din_width_g - 1 downto 0);
-			else										--SPI Data width > Register width
-				spi_reg_din (data_width_g - 1 downto 0)	<=	wbs_dat_i (data_width_g - 1 downto 0);
-				spi_reg_din (reg_din_width_g - 1 downto data_width_g) <= (others => '0');
-			end if;
-			
-			spi_reg_din_val	<=	'1';
+			spi_reg_addr (reg_addr_width_g - 1 downto 0)	<=	wbs_adr_i (reg_addr_width_g - 1 downto 0);
+			spi_reg_din (reg_din_width_g - 1 downto 0)		<=	wbs_dat_i (reg_din_width_g - 1 downto 0);
+			spi_reg_din_val		<=	'1';
 		
 		else
 			spi_reg_addr		<=	(others => '0');
@@ -279,7 +303,7 @@ begin
 						end if;
 					else								--Registers Transmission
 						if (wbs_we_i = '1') then
-							cur_st	<=	reg_wr_st;
+							cur_st	<=	neg_stall_st;
 						else
 							cur_st	<=	cur_st;
 							report "Time: " & time'image (now) & ", WBS_SPI >> idle_st: Read from registers is not supported."
@@ -298,7 +322,11 @@ begin
 					report "Time: " & time'image (now) & ", WBS_SPI >> reg_done_st: Error while writing to SPI registers."
 					severity error;
 				end if;
-				cur_st	<=	idle_st;
+				if (int_cyc = '0') then	--WBS_CYC was negated
+					cur_st	<=	idle_st;
+				else
+					cur_st	<=	end_rx_st;	--Go to end_rx_st, for wait until end of WBS_CYC
+				end if;
 			
 			when rx_prep_ram_st	=>
 				if blen_sr_b then
@@ -328,7 +356,9 @@ begin
 				end if;
 			
 			when neg_stall_st	=>
-				if (int_we = '1') then			--Writing
+				if (wbs_tgc_i = '1') then		--Write to SPI Registers
+					cur_st	<=	reg_wr_st;
+				elsif (int_we = '1') then			--Writing
 					cur_st	<=	tx_data_st;
 				else							--Reading
 					cur_st	<=	rx_data_st;
@@ -347,7 +377,7 @@ begin
 
 			when rx_data_st	=>
 				if (rx_cnt (blen_width_g) = '1') then	--End of burst
-					cur_st	<=	idle_st;
+					cur_st	<=	end_rx_st;
 				elsif (ram_dec_dout_val = '0') then
 					cur_st	<=	end_rx_st;
 					report "Time: " & time'image (now) & ", WBS_SPI >> rx_data_st: Data Valid from Decoder RAM has not been received"
@@ -361,14 +391,18 @@ begin
 				end if;
 				
 			when end_tx_st	=>
-				if (mp_enc_done = '1') then	--All data has been transmitted to SPI
+				if (int_cyc = '0') and (mp_enc_done = '1') then	--WBS_CYC was negated ; All data has been transmitted to SPI
 					cur_st	<=	idle_st;
 				else
 					cur_st	<=	cur_st;
 				end if;
 			
 			when end_rx_st	=>
-				cur_st	<=	idle_st;
+				if (int_cyc = '0') then	--WBS_CYC was negated
+					cur_st	<=	idle_st;
+				else
+					cur_st	<=	cur_st;
+				end if;
 
 			when others =>	--ERROR: This should not happen
 				cur_st	<=	idle_st;
@@ -425,10 +459,10 @@ begin
 				or (mp_dec_len_reg 	/= wbs_tga_i) then
 					wbs_err_o	<=	'1';
 				else
-					wbs_ack_o	<=	'0';
+					wbs_err_o	<=	'0';
 				end if;
 			else
-				wbs_ack_o		<=	'0';
+				wbs_err_o		<=	'0';
 			end if;
 		elsif (cur_st = reg_done_st)	--Wait for ACK / ERR from SPI Registers
 			and ((spi_reg_ack = '0') or (spi_reg_err = '1')) then
@@ -445,7 +479,7 @@ begin
 	if (rst = reset_polarity_g) then
 		int_we	<=	'1';
 	elsif rising_edge(clk_i) then
-		if (cur_st = neg_stall_st) and (wbs_cyc_i = '1') then
+		if (cur_st = idle_st) and (wbs_cyc_i = '1') then
 			int_we	<=	wbs_we_i;
 		elsif (cur_st = end_rx_st) then
 			int_we	<=	'1';
