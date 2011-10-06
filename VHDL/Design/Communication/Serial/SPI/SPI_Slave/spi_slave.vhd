@@ -42,8 +42,8 @@ entity spi_slave is
 				reg_width_g			:	positive	:= 8;		--Number of bits in SPI configuration Register
 				dval_cpha_g			:	std_logic	:= '0';		--Default (initial) value of CPHA
 				dval_cpol_g			:	std_logic	:= '0';		--Default (initial) value of CPOL
-				first_dat_lsb		:	boolean		:= true	    --TRUE: Transmit and Receive LSB first. FALSE - MSB first
-				default_dat_g		:	integer		:= 0;		--Default data transmitted to master when the FIFO is empty
+				first_dat_lsb		:	boolean		:= true;    --TRUE: Transmit and Receive LSB first. FALSE - MSB first
+				default_dat_g		:	integer		:= 0		--Default data transmitted to master when the FIFO is empty
 			);
 			
 	port 	(
@@ -111,7 +111,6 @@ architecture rtl_spi_slave of spi_slave is
 	--Clock & Internal Reset:
 	signal spi_clk_i	:		std_logic;										--Internal SPI_CLK
 	signal spi_clk_reg	:		std_logic;										--Saves the previous sample of SPI_CLK when the slave is active
-	signal int_rst		:		std_logic;										--Internal reset - at configuration change
 	
 	--Configuration Register:
 	-- * Bit 0	-	CPHA
@@ -156,7 +155,7 @@ begin
 		end if;
 	end process fsm_state_reg_proc;
 	
-	fsm_proc: process (cur_st, spi_ss_in, fifo_empty, sr_out_sel)
+	fsm_proc: process (cur_st, spi_ss_in, fifo_empty, fifo_din_valid, sr_out_data, fifo_req_sr(0), sr_cnt_out, sr_cnt_in)
 	begin
 		
 		case cur_st is
@@ -217,8 +216,6 @@ begin
 			when break_st	=>
 				if (spi_ss_in = ss_polarity_g) then
 					next_st	<=	data_st;
-				elsif (sr_out_data = '1') then --data from FIFO is inside the sh_reg
-					next_st <=	ready_st;
 				else
 					next_st	<=	idle_st;
 				end if;
@@ -318,6 +315,7 @@ begin
 	-- as the SPI_MISO, which is fed from the output Shift Register.
 	--------------------------------------------------------------------------
 	spi_sr_proc: process (clk, rst)
+	variable default_data	:	std_logic_vector (data_width_g - 1 downto 0)	:=	(others => '0');
 	begin
 		if (rst = reset_polarity_g) then
 			spi_sr_out		<=	(others => '0');
@@ -333,35 +331,98 @@ begin
 				when idle_st	=>	
 					spi_miso	<=	'Z';
 					if (spi_ss_in = ss_polarity_g) then -- start of transaction and FIFO data is NOT ready
-						spi_sr_out	<=	conv_std_logic_vector (default_dat_g, data_width_g);
-						sr_out_data	<=	'0';
-						sr_cnt_in	<=	0;
-						sr_cnt_out	<=	0;
+						if (cpha = '0') then -- need to propogate first bit of Tx data
+							sr_cnt_out		<=	1; -- first bit is being propogated
+							sr_cnt_in		<=	0;
+							default_data	:=	conv_std_logic_vector (default_dat_g, data_width_g);
+							sr_out_data		<=	'0';
+							--TX Data
+							if (first_dat_lsb) then		--First TX data is LSB
+								spi_miso								<=	default_data (0);
+								spi_sr_out (data_width_g - 2 downto 0)	<= 	default_data (data_width_g - 1 downto 1);
+							else						--First TX data is MSB
+								spi_miso								<=	default_data (data_width_g - 1);
+								spi_sr_out (data_width_g - 1 downto 1)	<= 	default_data (data_width_g - 2 downto 0);
+							end if;
+						else -- cpha = 1
+							spi_sr_out	<=	conv_std_logic_vector (default_dat_g, data_width_g);
+							sr_out_data	<=	'0';
+							sr_cnt_in	<=	0;
+							sr_cnt_out	<=	0;
+						end if;
 					end if;
 				
 				when fifo_load_st	=>
 					spi_miso	<=	'Z';
 					if (fifo_din_valid = '1') then
-						spi_sr_out	<=	fifo_din;
-						sr_out_data	<=	'1'
-						if (spi_ss_in = ss_polarity_g) then
-							sr_cnt_in	<=	0;
-							sr_cnt_out	<=	0;
+						if (spi_ss_in /= ss_polarity_g) then
+							spi_sr_out	<=	fifo_din;
+							sr_out_data	<=	'1';
+						else
+							if (cpha = '0') then -- need to propogate first bit of Tx data
+								sr_cnt_out		<=	1; -- first bit is being propogated
+								sr_cnt_in		<=	0;
+								default_data	:=	fifo_din;
+								sr_out_data		<=	'1';
+								--TX Data
+								if (first_dat_lsb) then		--First TX data is LSB
+									spi_miso								<=	default_data (0);
+									spi_sr_out (data_width_g - 2 downto 0)	<= 	default_data (data_width_g - 1 downto 1);
+								else						--First TX data is MSB
+									spi_miso								<=	default_data (data_width_g - 1);
+									spi_sr_out (data_width_g - 1 downto 1)	<= 	default_data (data_width_g - 2 downto 0);
+								end if;
+							else -- cpha = 1
+								spi_sr_out	<=	fifo_din;
+								sr_out_data	<=	'1';
+								sr_cnt_in	<=	0;
+								sr_cnt_out	<=	0;
+							end if;
 						end if;
 					end if;
 					
 				when ready_st	=>
 					spi_miso	<=	'Z';
 					if (spi_ss_in = ss_polarity_g) then
-						sr_cnt_in	<=	0;
-						sr_cnt_out	<=	0;
+						if (cpha = '0') then -- need to propogate first bit of Tx data
+							sr_cnt_out		<=	1; -- first bit is being propogated
+							sr_cnt_in		<=	0;
+							--TX Data
+							if (first_dat_lsb) then		--First TX data is LSB
+								spi_miso								<=	spi_sr_out (0);
+								spi_sr_out (data_width_g - 2 downto 0)	<= 	spi_sr_out (data_width_g - 1 downto 1);
+							else						--First TX data is MSB
+								spi_miso								<=	spi_sr_out (data_width_g - 1);
+								spi_sr_out (data_width_g - 1 downto 1)	<= 	spi_sr_out (data_width_g - 2 downto 0);
+							end if;
+						else -- cpha = 1
+							sr_cnt_in	<=	0;
+							sr_cnt_out	<=	0;
+						end if;
 					end if;
 			
 				when break_st	=>
 					spi_miso	<=	'Z';
 					if (spi_ss_in = ss_polarity_g) then
-						sr_cnt_in	<=	0;
-						sr_cnt_out	<=	0;
+						if (cpha = '0') then -- need to propogate first bit of Tx data
+							sr_cnt_out		<=	1; -- first bit is being propogated
+							sr_cnt_in		<=	0;
+							default_data	:=	conv_std_logic_vector (default_dat_g, data_width_g);
+							sr_out_data		<=	'0';
+							--TX Data
+							if (first_dat_lsb) then		--First TX data is LSB
+								spi_miso								<=	default_data (0);
+								spi_sr_out (data_width_g - 2 downto 0)	<= 	default_data (data_width_g - 1 downto 1);
+							else						--First TX data is MSB
+								spi_miso								<=	default_data (data_width_g - 1);
+								spi_sr_out (data_width_g - 1 downto 1)	<= 	default_data (data_width_g - 2 downto 0);
+							end if;
+						else -- cpha = 1
+							spi_sr_out	<=	conv_std_logic_vector (default_dat_g, data_width_g);
+							sr_out_data	<=	'0';
+							sr_cnt_in	<=	0;
+							sr_cnt_out	<=	0;
+						end if;
 					end if;
 
 				when data_st	=>
@@ -388,18 +449,22 @@ begin
 							sr_cnt_out	<=	sr_cnt_out + 1;
 							--TX Data
 							if (first_dat_lsb) then		--First TX data is LSB
-								spi_miso	<=	spi_sr_out (sr_cnt_out);
+								spi_miso								<=	spi_sr_out (0);
+								spi_sr_out (data_width_g - 2 downto 0)	<= 	spi_sr_out (data_width_g - 1 downto 1);
 							else						--First TX data is MSB
-								spi_miso	<=	spi_sr_out (data_width_g - 1 - sr_cnt_out);
+								spi_miso								<=	spi_sr_out (data_width_g - 1);
+								spi_sr_out (data_width_g - 1 downto 1)	<= 	spi_sr_out (data_width_g - 2 downto 0);
 							end if;
 						----	Sample Data	-----
 						elsif (samp_en = '1') then
 							sr_cnt_in	<=	sr_cnt_in + 1;
 							--RX Data
 							if (first_dat_lsb) then		--First RX data is LSB
-								spi_sr_in (sr_cnt_in)	<=	spi_mosi;
+								spi_sr_in (data_width_g - 1)			<=	spi_mosi;
+								spi_sr_in (data_width_g - 2 downto 0)	<= 	spi_sr_in (data_width_g - 1 downto 1);
 							else						--First RX data is MSB
-								spi_sr_in (data_width_g - 1 - sr_cnt_out)	<=	spi_miso;
+								spi_sr_in (0)							<=	spi_mosi;
+								spi_sr_in (data_width_g - 1 downto 1)	<= 	spi_sr_in (data_width_g - 2 downto 0);
 							end if;
 						end if;
 					end if;
@@ -476,6 +541,8 @@ begin
 	begin
 		if (rst = reset_polarity_g) then
 			conf_reg	<=	(0	=>	dval_cpha_g, 1	=>	dval_cpol_g, others	=>	'0');
+			reg_ack	<= '0';
+			reg_err	<= '0';
 			
 		elsif rising_edge(clk) then
 			if (reg_din_val = '1') then
@@ -497,3 +564,5 @@ begin
 			end if;
 		end if;
 	end process spi_conf_reg_proc;
+
+end architecture rtl_spi_slave;
