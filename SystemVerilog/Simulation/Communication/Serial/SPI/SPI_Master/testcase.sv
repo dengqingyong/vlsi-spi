@@ -1,5 +1,6 @@
 `ifndef GUARD_TESTCASE
 `define GUARD_TESTCASE
+`include "Environemnt.sv"
 
 //Normal Burst
 program burst_testcase(spi_master_in_interface.MASTER_INPUT in_intf, spi_interface.MASTER_SPI spi_intf);
@@ -10,6 +11,7 @@ initial
 begin
 $display(" ******************* Start of Burst testcase ****************");
 env = new(in_intf,spi_intf);
+$display(" ******************* Executing Testcase	 ******************");
 env.run();
 #1000;
 end

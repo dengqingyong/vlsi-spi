@@ -34,9 +34,8 @@ burst_testcase TC1 (in_intf, spi_intf);
 //  DUT instance and signal connection             //
 /////////////////////////////////////////////////////
 
-defparam DUT.bits_of_slaves_g = 2;	//4 slaves (2^2 = 4)
 
-spi_master DUT (.clk(clk),
+spi_master #(.bits_of_slaves_g(2)) DUT (.clk(clk),
                .rst(in_intf.rst),
                .fifo_req_data(in_intf.fifo_req_data),
                .fifo_din(in_intf.fifo_din),
@@ -47,13 +46,14 @@ spi_master DUT (.clk(clk),
                .reg_din(in_intf.reg_din),
                .reg_din_val(in_intf.reg_din_val),
                .reg_ack(in_intf.reg_ack),
+               .reg_err(in_intf.reg_err),
                .busy(in_intf.busy),
                .dout(in_intf.dout),
                .dout_valid(in_intf.dout_valid),
-               .spi_clk(spi_intf.cb.spi_clk),
-               .spi_mosi(spi_intf.cb.spi_mosi),
-               .spi_miso(spi_intf.cb.spi_miso),
-               .spi_ss(spi_intf.cb.spi_ss));
+               .spi_clk(spi_intf.spi_clk),
+               .spi_mosi(spi_intf.spi_mosi),
+               .spi_miso(spi_intf.spi_miso),
+               .spi_ss(spi_intf.spi_ss));
 
 endmodule
 

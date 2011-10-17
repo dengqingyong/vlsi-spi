@@ -54,7 +54,8 @@ entity wbs_spi is
 		wbs_adr_i				:	in std_logic_vector (addr_width_g - 1 downto 0);	--Input Address
 		wbs_tga_i				:	in std_logic_vector (blen_width_g - 1 downto 0);	--Burst Length
 		wbs_dat_i				:	in std_logic_vector (data_width_g - 1 downto 0);	--Input Data
-		wbs_tgc_i				:	in std_logic;										--'1' - Write to SPI Registers ; '0' - Transmit / recieve using SPI
+		wbs_tgc_i				:	in std_logic;										--'1' - Write to SPI Master Registers ; '0' - Transmit / recieve using SPI
+		wbs_tgd_i				:	in std_logic;										--'0' - Write / Read data to / from SPI Slave ; '1' - Write / Read registers to / from SPI Slave
 		wbs_dat_o				:	out std_logic_vector (data_width_g - 1 downto 0);	--Output Data
 		wbs_stall_o				:	out std_logic;										--Output STALL (Hold strobe) 
 		wbs_ack_o				:	out std_logic;										--Output Acknowledge
@@ -87,12 +88,12 @@ entity wbs_spi is
 		ram_dec_aout_val		:	out std_logic;										--Output address to RAM is valid (request for data)
 		
 		--SPI Interface
-		spi_we					:	out std_logic;										--Write Enable. In case of '0' (Reading) - SPI will be commanded to transfer garbage data, in order to receive valid data
+		spi_we					:	out std_logic;											--Write Enable. In case of '0' (Reading) - SPI will be commanded to transfer garbage data, in order to receive valid data
 		spi_reg_addr			:	out std_logic_vector (reg_addr_width_g - 1 downto 0);	--Address to registers
-		spi_reg_din				:	out std_logic_vector (reg_din_width_g - 1 downto 0);		--Data to registers
+		spi_reg_din				:	out std_logic_vector (reg_din_width_g - 1 downto 0);	--Data to registers
 		spi_reg_din_val			:	out std_logic;											--Data to registers is valid
-		spi_reg_ack				:	in	std_logic;										--SPI Registers - data acknowledged
-		spi_reg_err				:	in	std_logic										--SPI Registers - error while writing data to SPI
+		spi_reg_ack				:	in	std_logic;											--SPI Registers - data acknowledged
+		spi_reg_err				:	in	std_logic											--SPI Registers - error while writing data to SPI
 	);
 end entity wbs_spi;
 
@@ -430,11 +431,11 @@ begin
 		    mp_enc_type_reg		<=	(others => '0');
 		elsif (cur_st = rx_cmd_st) then
 			mp_enc_reg_ready	<=	'1';
-		    mp_enc_type_reg		<=	type_rd_c;
+		    mp_enc_type_reg		<=	type_rd_c + (2**3)*wbs_tgd_i;	--wbs_tgd: write/read to / from SPI Registers / data
 		
 		elsif (cur_st = tx_data_st) and (tx_cnt (blen_width_g) = '1') then	--End of TX Burst
 			mp_enc_reg_ready	<=	'1';
-		    mp_enc_type_reg		<=	type_wr_c;
+		    mp_enc_type_reg		<=	type_wr_c + (2**3)*wbs_tgd_i;	--wbs_tgd: write/read to / from SPI Registers / data
 		
 		else
 			mp_enc_reg_ready	<=	'0';

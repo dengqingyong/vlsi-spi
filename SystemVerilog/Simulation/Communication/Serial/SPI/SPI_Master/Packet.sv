@@ -1,9 +1,9 @@
 `ifndef GUARD_PACKET
 `define GUARD_PACKET
-
+`include "Globals.sv"
 class packet;
 
-rand byte data[];						//Payload using Dynamic array,size is generated on the fly
+rand logic [data_width_c - 1:0] data[];						//Payload using Dynamic array,size is generated on the fly
 randc logic [bits_of_slaves_c - 1 : 0] spi_ss; //SPI Slave Select
 
 constraint payload_size_c { data.size inside { [1 : payload_max_len_c]};}
