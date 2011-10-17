@@ -1,6 +1,7 @@
 
 `ifndef GUARD_INTERFACE
 `define GUARD_INTERFACE
+`include "Globals.sv"
 
 ///////////////////////////////////////////////
 // Interface declaration for SPI inputs		///
@@ -16,7 +17,7 @@ interface spi_master_in_interface(input bit clk);
   logic [data_width_c - 1:0]	fifo_din;		//FIFO - Output data
   
   //Slave Select Address
-  logic	[bits_of_slaves_c - 1:0]	spi_slave_addr;	//Slave Address
+  logic	[$clog2(bits_of_slaves_c) - 1:0]	spi_slave_addr;	//Slave Address
   
   //Configuration Registers
   logic [reg_addr_width_c - 1:0]	reg_addr;	//Register's Address
@@ -31,8 +32,8 @@ interface spi_master_in_interface(input bit clk);
   logic 						dout_valid;		//Output data is valid
   
   modport MASTER_INPUT (
-		input 	clk, fifo_req_data, reg_ack, reg_err, busy, dout, dout_valid,
-		output 	rst, fifo_din, fifo_din_valid, fifo_empty, spi_slave_addr, reg_addr,
+		input 	fifo_req_data, reg_ack, reg_err, busy, dout, dout_valid,
+		output 	clk, rst, fifo_din, fifo_din_valid, fifo_empty, spi_slave_addr, reg_addr,
 				reg_din, reg_din_val
 				);
 
@@ -46,18 +47,11 @@ interface spi_interface(input bit clk);
   logic           						spi_mosi; 	//Output data from Master
   logic           						spi_miso; 	//Input data from Slave
   logic     [bits_of_slaves_c - 1:0] 	spi_ss;		
-
-  cloking cb@(posedge clk);
-     //#1 step is the minimum resolution.
-	 //In future test, it is possible to generate delay between SPI Master and Slave
-	 default input #1step output #1step;
-     input		spi_clk
-	 input    	spi_mosi;
-     output		spi_miso
-	 input    	spi_ss;
-  endcloking
   
-  modport MASTER_SPI(cloking cb, input clk);
+  modport MASTER_SPI(
+				input 	clk, spi_clk, spi_mosi, spi_ss,
+				output	spi_miso
+				);
   
 endinterface
 

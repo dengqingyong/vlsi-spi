@@ -1,5 +1,10 @@
 `ifndef GUARD_ENV
 `define GUARD_ENV
+`include "Globals.sv"
+`include "Packet.sv"
+`include "Driver.sv"
+`include "Receiver.sv"
+`include "Scoreboard.sv"
 
 class Environment ;
 
@@ -9,12 +14,14 @@ class Environment ;
   virtual spi_interface.MASTER_SPI				spi_intf;	//SPI Interface
   
   Driver drvr;
-  Receiver rcvr[4];
+  Receiver rcvr[bits_of_slaves_c];
   Scoreboard sb;
   mailbox rcvr_tx2sb;
   mailbox rcvr_rx2sb;
   mailbox drvr_tx2sb ;
   mailbox drvr_rx2sb ;
+  logic [reg_din_width_c - 1:0] clk_div_reg = 2;
+  
 
 function new(virtual spi_master_in_interface.MASTER_INPUT    in_intf_new       ,
              virtual spi_interface.MASTER_SPI  spi_intf_new   );
@@ -32,17 +39,26 @@ function void build();
    rcvr_tx2sb = new();
    rcvr_rx2sb = new();
    sb = new(drvr_tx2sb, drvr_rx2sb, rcvr_tx2sb, rcvr_rx2sb);
-   drvr = new(input_intf,drvr_tx2sb, drvr_rx2sb);
+   drvr = new(in_intf,drvr_tx2sb, drvr_rx2sb);
    foreach(rcvr[i])
-     rcvr[i]= new(in_intf, rcvr_tx2sb, rcvr_rx2sb);
+     rcvr[i]= new(spi_intf, rcvr_tx2sb, rcvr_rx2sb, i);
    $display(" %0d : Environemnt : end of build() method",$time);
 endfunction : build
 
 task reset();
   $display(" %0d : Environemnt : start of reset() method",$time);
-  in_intf.reset      <= 0;
-  repeat (4) @ input_intf.clk;
-  in_intf.reset      <= 1;
+  in_intf.rst      			<= 0;
+  in_intf.fifo_din          <= '{default:0};
+  in_intf.fifo_din_valid    <= 0;
+  in_intf.fifo_empty        <= 1;
+  in_intf.spi_slave_addr    <= '{default:0};
+  in_intf.reg_addr          <= '{default:0};
+  in_intf.reg_din           <= '{default:0};
+  in_intf.reg_din_val       <= 0;
+  spi_intf.spi_miso			<= 1'bz;
+  
+  repeat (4) @(in_intf.clk);
+  in_intf.rst      <= 1;
   
   $display(" %0d : Environemnt : end of reset() method",$time);
 endtask : reset
@@ -51,26 +67,23 @@ task cfg_dut(logic [reg_din_width_c - 1:0] clk_div_reg, logic [reg_din_width_c -
   $display(" %0d : Environemnt : start of cfg_dut() method",$time);
   
   @(posedge in_intf.clk);
-  in_intf.reg_addr 		<= reg_addr_width_c'd0;	//Clock Divide register
+  in_intf.reg_addr 		<= '{default:0};	//Clock Divide register
   in_intf.reg_din 		<= clk_div_reg;
   in_intf.reg_din_val	<= 1;
   @(posedge in_intf.clk);
-  in_intf.reg_addr 		<= reg_addr_width_c'd1;	//CPHA, CPOL Register
-  in_intf.reg_din 		<= cphaphol_reg;
+  in_intf.reg_addr 		<= 1;	//CPHA, CPOL Register
+  in_intf.reg_din 		<= cphapol_reg;
   in_intf.reg_din_val	<= 1;
 
-  clk_reg_ack_assert: assert (!in_intf.reg_ack or in_intf.reg_err)
+  reg_err_assert: assert (!in_intf.reg_err)
+  else
   begin
-	$error ("Acknowledge register was not detected, Time: %0t", $time);
+	$error ("reg_err detected, Time: %0t", $time);
 	error++;
   end
+
   @(posedge in_intf.clk);
   in_intf.reg_din_val	<= 0;
-  cphapol_reg_ack_assert: assert (!in_intf.reg_ack or in_intf.reg_err)
-  begin
-	$error ("Acknowledge register was not detected, Time: %0t", $time);
-	error++;
-  end
 	
   @(posedge in_intf.clk);
   $display(" %0d : Environemnt : end of cfg_dut() method",$time);
@@ -81,26 +94,28 @@ task start();
   fork
     drvr.start();
 	drvr.rx();
-    rcvr[0].start();
-    rcvr[1].start();
-    rcvr[2].start();
-    rcvr[3].start();
-    sb.start();
+    foreach(rcvr[i])
+		rcvr[i].start();
+    sb.rx_get();
+    sb.tx_get();
   join_any
   $display(" %0d : Environemnt : end of start() method",$time);
 endtask : start
 
 task wait_for_end();
    $display(" %0d : Environemnt : start of wait_for_end() method",$time);
-   repeat(10000) @(input_intf.clock);
+   repeat(10000) @(in_intf.clk);
    $display(" %0d : Environemnt : end of wait_for_end() method",$time);
 endtask : wait_for_end
 
 task run();
+   logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
    $display(" %0d : Environemnt : start of run() method",$time);
    build();
+   temp_regs[0] = 0; //rcvr[0].cpha;
+   temp_regs[1] = 0; //rcvr[0].cpol;
    reset();
-   cfg_dut();
+   cfg_dut(clk_div_reg, temp_regs);
    start();
    wait_for_end();
    report();

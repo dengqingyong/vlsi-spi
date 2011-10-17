@@ -25,7 +25,7 @@ entity spi_master_tb is
 				reset_polarity_g	:	std_logic	:= '0';		--Reset polarity. '0' is active low, '1' is active high
 				ss_polarity_g		:	std_logic	:= '0';		--Slave Select polarity. '0' is active low, '1' is active high
 				data_width_g		:	positive range 2 to positive'high	:= 8;		--Shift register is 8 bits. Range is from 2 - for the Shift Register
-				num_of_slaves_g		:	positive	:= 1;		--Number of slaves (determines SPI_SS bus width)
+				num_of_slaves_g		:	positive	:= 2;		--Number of slaves (determines SPI_SS bus width)
 				reg_width_g			:	positive	:= 8;		--Number of bits in SPI Clock Divider Register
 				dval_conf_reg_g		:	natural		:= 0;		--Default (initial) value of Configuration Register
 				dval_clk_reg_g		:	positive range 2 to positive'high		:= 2;		--Default (initial) value of Clock Divide Register (Divide system clock by 2 is the minimum)
@@ -93,7 +93,7 @@ signal rst				:	std_logic := not reset_polarity_g;
 
 signal spi_clk			:	std_logic;
 signal spi_mosi			:	std_logic;
-signal spi_miso			:	std_logic;
+signal spi_miso			:	std_logic := '0';
 signal spi_ss			:	std_logic_vector (num_of_slaves_g - 1 downto 0);
 
 signal fifo_req_data	:	std_logic;											
@@ -126,7 +126,7 @@ begin
 	wait for 1.4 us;
 	wait until rising_edge (clk);
 	reg_addr	<=	x"00";
-	reg_din		<=	x"04";
+	reg_din		<=	x"02";
 	reg_din_val	<=	'1';
 	wait until rising_edge (clk);
 	reg_addr	<=	x"00";
@@ -138,13 +138,13 @@ end process change_div_rate_proc;
 fifo_empty_proc: process
 begin
 	fifo_empty	<=	'0';
-	wait for 600 ns;
+	wait for 5000 ns;
 	fifo_empty	<=	'1';
 	wait for 1 us;
 end process fifo_empty_proc;
 
 spi_slave_addr_proc:
-spi_slave_addr	<=	0;
+spi_slave_addr	<=	0, 1 after 500 ns;
 
 fifo_data_proc: process
 variable rand_val		:		std_logic_vector (data_width_g - 1 downto 0) := (others => '0');

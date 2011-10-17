@@ -1,5 +1,6 @@
 `ifndef GUARD_COVERAGE
 `define GUARD_COVERAGE
+`include "Packet.sv"
 
 class coverage;
 packet pkt;
@@ -7,7 +8,6 @@ packet pkt;
 covergroup switch_coverage;
 
   length : coverpoint pkt.data.size;
-  //all_cross:  cross length,da,length_kind,fcs_kind;
 endgroup
 
 function new();

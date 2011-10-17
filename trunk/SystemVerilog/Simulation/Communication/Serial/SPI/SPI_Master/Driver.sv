@@ -1,5 +1,7 @@
 `ifndef GUARD_DRIVER
 `define GUARD_DRIVER
+`include "Globals.sv"
+`include "Packet.sv"
 
 class Driver;
 virtual spi_master_in_interface.MASTER_INPUT  in_intf;
@@ -12,7 +14,7 @@ packet gpkt;
 function new(virtual spi_master_in_interface.MASTER_INPUT  in_intf_new, 
 			mailbox drvr_tx2sb, mailbox drvr_rx2sb);
   this.in_intf    = in_intf_new  ;
-  if((drvr_tx2sb == null) or (drvr_rx2sb == null))
+  if ((drvr_tx2sb == null) || (drvr_rx2sb == null))
   begin
     $display(" **ERROR**: Driver mailbox is null");
     $finish;
@@ -26,18 +28,17 @@ endfunction : new
 /// method to send the packet to DUT ////////
 task start();
   packet pkt;
+  pkt = new gpkt;
   repeat(num_of_pkts)	//Transmit 'num_of_pkts' bursts
   begin
     //Simulate FIFO Empty
 	in_intf.fifo_empty		<=	1;
 	in_intf.fifo_din_valid	<=	0;
-	in_intf.fifo_din		<=	data_width_c'd0;
+	in_intf.fifo_din		<=	'{default:(0)};
 	 
 	repeat(19) @(posedge in_intf.clk);	//Wait for 20 clocks, before initializing transmission
 	in_intf.fifo_empty		<=	0;		//Negate FIFO Empty
-	@(posedge in_intf.clk);
 
-    pkt = new gpkt;
     //// Randomize the packet /////
     if ( pkt.randomize())
      begin
@@ -48,7 +49,7 @@ task start();
        /////  send the packed bytes //////
        foreach(pkt.data[i])
        begin
-	    spi_slave_addr	<=	pkt.spi_ss;
+	    in_intf.spi_slave_addr	<=	pkt.spi_ss;
 		if (in_intf.fifo_req_data == 0)
 		begin
 			wait (in_intf.fifo_req_data);	//Wait for Request Data from FIFO
@@ -63,7 +64,7 @@ task start();
 		//Simulate FIFO Empty - End of burst
 		in_intf.fifo_empty		<=	1;
 		in_intf.fifo_din_valid	<=	0;
-		in_intf.fifo_din		<=	data_width_c'd0;
+		in_intf.fifo_din		<=	'{default:0};
   
        //// Push the packet in to mailbox for scoreboard /////
        drvr_tx2sb.put(pkt);
@@ -92,9 +93,10 @@ task rx();
 	begin
 		bytes = new[bytes.size + 1](bytes);
 		bytes[bytes.size - 1] = in_intf.dout;
-	else					//End of burst
+	end
+	else begin					//End of burst
 		pkt = new();
-		pkt.data = new bytes;
+		pkt.data = new[bytes.size + 1](bytes);
 		drvr_rx2sb.put(pkt);	//Place in Scoreboard
 		bytes.delete();
 	end

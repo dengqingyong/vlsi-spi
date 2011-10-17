@@ -34,13 +34,14 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_arith.all;
 use ieee.std_logic_unsigned.all;
+use ieee.math_real.all;
 
 entity spi_master is
 	generic (
 				reset_polarity_g	:	std_logic	:= '0';		--Reset polarity. '0' is active low, '1' is active high
 				ss_polarity_g		:	std_logic	:= '0';		--Slave Select polarity. '0' is active low, '1' is active high
 				data_width_g		:	positive range 2 to positive'high	:= 8;		--Shift register is 8 bits. Range is from 2 - for the Shift Register
-				num_of_slaves_g		:	positive	:= 1;		--Number of slaves (determines SPI_SS bus width)
+				bits_of_slaves_g	:	positive	:= 1;		--Number of slaves bits (determines SPI_SS bus width)
 				reg_width_g			:	positive	:= 8;		--Number of bits in SPI Clock Divider Register
 				dval_conf_reg_g		:	natural		:= 0;		--Default (initial) value of Configuration Register
 				dval_clk_reg_g		:	positive range 2 to positive'high		:= 2;		--Default (initial) value of Clock Divide Register (Divide system clock by 2 is the minimum)
@@ -58,7 +59,7 @@ entity spi_master is
 				spi_clk				:	out std_logic;											--Output SPI Clock to SPI Slave
 				spi_mosi			:	out	std_logic;											--Data: Master output, slave input
 				spi_miso			:	in 	std_logic;											--Data: Master input, slave output
-				spi_ss				:	out	std_logic_vector (num_of_slaves_g - 1 downto 0);	--Slave Select
+				spi_ss				:	out	std_logic_vector (bits_of_slaves_g - 1 downto 0);	--Slave Select
 				
 				-- FIFO Interface (Input to SPI Master)
 				fifo_req_data		:	out std_logic;											--Request for data from FIFO
@@ -67,7 +68,7 @@ entity spi_master is
 				fifo_empty			:	in	std_logic;											--FIFO is empty
 				
 				--Additional Ports:
-				spi_slave_addr		:	in natural range 0 to (num_of_slaves_g - 1);			--Addressed slave
+				spi_slave_addr		:	in std_logic_vector (integer(ceil(log(real(bits_of_slaves_g)) / log(2.0))) - 1 downto 0);	--Addressed slave
 				
 				-- Configuration Registers Ports
 				reg_addr			:	in std_logic_vector (reg_addr_width_g - 1 downto 0);	--Address to registers
@@ -108,8 +109,7 @@ architecture rtl_spi_master of spi_master is
 	signal sr_cnt_in	:		natural range 0 to data_width_g;				--Number of received bits
 	signal sr_cnt_in_d1	:		natural range 0 to data_width_g;				--Derive of sr_cnt_in
 	signal fifo_req_sr	:		std_logic_vector (1 downto 0);					--Bit 0 => when '1' - indicates that FIFO_DIN_VALID should be asserted
-	signal int_spi_ss	:		std_logic_vector (num_of_slaves_g - 1 downto 0);--Inernal Slave Select
-	signal int_ss_adr	:		natural range 0 to (num_of_slaves_g - 1);		--Internal Address Slave
+	signal int_spi_ss	:		std_logic_vector (bits_of_slaves_g - 1 downto 0);--Inernal Slave Select
 	
 	-- Configuration Registers
 	signal div_reg		:		std_logic_vector (reg_width_g - 1 downto 0);	--Divide System Clock by (this number - 2)
@@ -179,22 +179,23 @@ begin
 	begin
 		if (rst = reset_polarity_g) then
 			int_spi_ss							<= (others => (not ss_polarity_g));
-			int_ss_adr							<=	0;
 		
 		elsif rising_edge(clk) then
 			if (cur_st = assert_ss_st) then
-				int_spi_ss						<= (others => (not ss_polarity_g));
-				int_spi_ss (spi_slave_addr)		<= ss_polarity_g;	
-				int_ss_adr						<= spi_slave_addr;
+				int_spi_ss										<= (others => (not ss_polarity_g));
+				if (conv_integer(spi_slave_addr) < bits_of_slaves_g) then
+					int_spi_ss(conv_integer(spi_slave_addr))	<= ss_polarity_g;
+				else
+					report "Time: " & time'image(now) & ", SPI Master >> SPI Slave Address (" & integer'image(conv_integer(spi_slave_addr)) & ") is out of range" & LF
+					& "SPI_SS will not assert"
+					severity error;
+				end if;
 				
 			elsif (cur_st = data_st) then
-				int_spi_ss						<= (others => (not ss_polarity_g));
-				int_spi_ss (int_ss_adr)			<= ss_polarity_g;	
-				int_ss_adr						<= int_ss_adr;
+				int_spi_ss		<= int_spi_ss;
 
 			else
 				int_spi_ss						<= (others => (not ss_polarity_g));
-				int_ss_adr						<= int_ss_adr;
 			end if;
 		end if;
 	end process spi_ss_proc;
@@ -321,6 +322,8 @@ begin
 			conf_reg	<=	conv_std_logic_vector (dval_conf_reg_g, reg_width_g);
 			div_reg		<=	conv_std_logic_vector (dval_clk_reg_g - 2, reg_width_g);
 			int_rst		<=	'0';
+			reg_ack		<= 	'0';
+			reg_err		<= 	'0';
 			
 		elsif rising_edge(clk) then
 			if (reg_din_val = '1') then
@@ -390,6 +393,14 @@ begin
 				spi_sr_out	<=	fifo_din;
 				sr_cnt_in	<=	0;
 				sr_cnt_out	<=	0;
+			
+			elsif (cur_st = assert_ss_st) then	--Prepare MOSI for data propagation
+				if (first_dat_lsb) then			--LSB First
+					spi_mosi		<=	spi_sr_out(0);
+				else							--MSB First
+					spi_mosi		<=	spi_sr_out (data_width_g - 1);
+				end if;
+				
 			elsif (cur_st = data_st) then	--TX data
 				--Load SR at end of burst
 				if (sr_cnt_out = 0) and (fifo_din_valid = '1') then
@@ -482,7 +493,9 @@ begin
 			if (int_rst = '1') then	--Internal reset
 				spi_clk_i	<= cpol;
 			else
-				if (spi_event = '1') then 
+				if (cur_st = idle_st) then
+					spi_clk_i	<=	cpol;
+				elsif (spi_event = '1') then 
 					spi_clk_i	<= not spi_clk_i;
 				else
 					spi_clk_i	<=	spi_clk_i;
