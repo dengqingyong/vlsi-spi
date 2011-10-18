@@ -101,7 +101,7 @@ task rx();
 	end
 	else begin					//End of burst
 		pkt = new();
-		pkt.data = new[bytes.size + 1](bytes);
+		pkt.data = new[bytes.size](bytes);
 		$display ("Driver received packet:");
 		pkt.display();
 		drvr_rx2sb.put(pkt);	//Place in Scoreboard
