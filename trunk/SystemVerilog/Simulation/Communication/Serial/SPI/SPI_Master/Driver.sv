@@ -28,6 +28,7 @@ endfunction : new
 /// method to send the packet to DUT ////////
 task start();
   packet pkt;
+  //logic [data_width_c -1:0] tx_data_tmp = 1;
   pkt = new gpkt;
   repeat(num_of_pkts)	//Transmit 'num_of_pkts' bursts
   begin
@@ -38,6 +39,8 @@ task start();
 	 
 	repeat(19) @(posedge in_intf.clk);	//Wait for 20 clocks, before initializing transmission
 	in_intf.fifo_empty		<=	0;		//Negate FIFO Empty
+	if (in_intf.busy)
+		@(negedge in_intf.busy);
 
     //// Randomize the packet /////
     if ( pkt.randomize())
@@ -56,7 +59,8 @@ task start();
 			@(posedge in_intf.clk);
 		end
 		in_intf.fifo_din_valid	<=	1;
-		in_intf.fifo_din		<=	pkt.data[i];
+		in_intf.fifo_din		<=	pkt.data[i]; //tx_data_tmp
+		//tx_data_tmp++;
 		@(posedge in_intf.clk);
 		in_intf.fifo_din_valid	<=	0;
        end 
@@ -68,7 +72,8 @@ task start();
   
        //// Push the packet in to mailbox for scoreboard /////
        drvr_tx2sb.put(pkt);
-	   repeat(5) @(posedge in_intf.clk);	//To ensure that last dout_valid from SPI Master has been asserted
+	   repeat(5)@(posedge in_intf.clk);
+	   @(negedge in_intf.busy);	//To ensure that last dout_valid from SPI Master has been asserted
 	   ->end_burst;
        
        $display(" %0d : Driver : Finished Driving the packet with length %0d",$time,pkt.data.size); 
@@ -86,7 +91,7 @@ endtask : start
 task rx();
   packet pkt;
   logic [data_width_c - 1:0] bytes[];
-  repeat(num_of_pkts)	//Receive 'num_of_pkts' bursts
+  forever
   begin
     @(end_burst or posedge in_intf.dout_valid);	//Wait for end of burst or New Data
 	if (in_intf.dout_valid) //New Data
@@ -97,6 +102,8 @@ task rx();
 	else begin					//End of burst
 		pkt = new();
 		pkt.data = new[bytes.size + 1](bytes);
+		$display ("Driver received packet:");
+		pkt.display();
 		drvr_rx2sb.put(pkt);	//Place in Scoreboard
 		bytes.delete();
 	end

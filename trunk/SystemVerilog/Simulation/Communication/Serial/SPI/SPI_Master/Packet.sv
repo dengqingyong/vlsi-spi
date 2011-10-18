@@ -24,7 +24,7 @@ virtual function bit compare(packet pkt);
 compare = 1;
 if(pkt == null)
    begin
-      $display(" ** ERROR ** : pkt : received a null object ");
+      $error(" ** ERROR ** : pkt : received a null object ");
       compare = 0;
    end
    else
@@ -32,7 +32,7 @@ if(pkt == null)
          foreach(this.data[i])
          if(pkt.data[i] !== this.data[i])
          begin
-            $display(" ** ERROR **: pkt : Data[%0d] field did not match",i);
+            $error(" ** ERROR **: pkt : Data[%0d] field did not match",i);
             compare = 0;
          end
       end
