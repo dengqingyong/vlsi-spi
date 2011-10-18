@@ -110,6 +110,10 @@ architecture rtl_spi_master of spi_master is
 	signal sr_cnt_in_d1	:		natural range 0 to data_width_g;				--Derive of sr_cnt_in
 	signal fifo_req_sr	:		std_logic_vector (1 downto 0);					--Bit 0 => when '1' - indicates that FIFO_DIN_VALID should be asserted
 	signal int_spi_ss	:		std_logic_vector (bits_of_slaves_g - 1 downto 0);--Inernal Slave Select
+	signal load_sr_data	:		boolean;										--TRUE when sr_cnt_out changes from (data_width_g - 2) to (data_width_g - 1)
+	signal load_sr_data_d1:		boolean;										--TRUE when sr_cnt_out changes from (data_width_g - 2) to (data_width_g - 1) - One clock delay
+	signal load_sr_data_d2:		boolean;										--TRUE when sr_cnt_out changes from (data_width_g - 2) to (data_width_g - 1) - Two clocks delay
+	signal cont_trans	:		boolean;										--TRUE to continue transaction at last FIFO data
 	
 	-- Configuration Registers
 	signal div_reg		:		std_logic_vector (reg_width_g - 1 downto 0);	--Divide System Clock by (this number - 2)
@@ -117,9 +121,9 @@ architecture rtl_spi_master of spi_master is
 	
 	--Clock & Internal Reset:
 	signal spi_clk_i	:		std_logic;										--Internal SPI_CLK
+	signal spi_clk_i_d1	:		std_logic;										--Internal SPI_CLK (One clock delay)
 	signal clk_cnt		:		std_logic_vector (reg_width_g downto 0);		--Clock counter - reversed. NOTE: One bit extra, to reduce '=' operation
 	alias  spi_event	:		std_logic is clk_cnt (reg_width_g);				--'1' - inverse spi_clk_i value
-	signal spi_clk_en	:		boolean;										--Enable (TRUE)/ Disable (FLASE) SPI clk
 	signal int_rst		:		std_logic;										--Internal reset - at configuration change
 	
 	--Configuration Register:
@@ -136,8 +140,8 @@ begin
 	
 	-------------------------		Hidden Processes	----------------------
 	spi_clk_out_proc:
-	spi_clk	<= 	spi_clk_i when spi_clk_en
-				else cpol;
+	spi_clk	<= 	cpol when (cur_st = idle_st)
+				else spi_clk_i_d1;
 	
 	spi_ss_out_proc:
 	spi_ss	<=	int_spi_ss;
@@ -201,27 +205,6 @@ begin
 	end process spi_ss_proc;
 	
 	--------------------------------------------------------------------------
-	-------------------------	spi_clk_en_proc proces	----------------------
-	--------------------------------------------------------------------------
-	-- This process enables / disables the SPI_CLK.
-	-- SPI Clock will be enabled when asserting SPI_SS, and during data
-	-- transmission.
-	--------------------------------------------------------------------------
-	spi_clk_en_proc: process (clk, rst)
-	begin
-		if (rst = reset_polarity_g) then
-			spi_clk_en	<= false;
-			
-		elsif rising_edge(clk) then
-			if (cur_st = assert_ss_st) or (cur_st = data_st) then
-				spi_clk_en	<= true;
-			else
-				spi_clk_en	<= false;
-			end if;
-		end if;
-	end process spi_clk_en_proc;
-	
-	--------------------------------------------------------------------------
 	-------------------------	fifo_data_proc proces	----------------------
 	--------------------------------------------------------------------------
 	-- This process asserts FIFO_REQ_DATA (Request for data from FIFO) when
@@ -238,7 +221,7 @@ begin
 				fifo_req_sr	(0) <= fifo_req_sr (1);
 				fifo_req_sr (1)	<= '1';
 			elsif (cur_st = data_st) then
-				if (sr_cnt_out = data_width_g) and (fifo_empty = '0') then
+				if (load_sr_data) and (fifo_empty = '0') then
 					fifo_req_data	<= '1';						--End of SR TX. Request for data from FIFO
 					fifo_req_sr		<= "10";
 				else
@@ -274,7 +257,11 @@ begin
 					end if;
 					
 				when load_sr_st	=>
-					cur_st	<=	assert_ss_st;
+					if (fifo_din_valid = '1') then
+						cur_st	<=	assert_ss_st;
+					else
+						cur_st 	<= cur_st;
+					end if;
 					
 				when assert_ss_st =>
 					if ((fifo_din_valid = '0') and (fifo_req_sr (0) = '1'))	then --ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
@@ -287,7 +274,7 @@ begin
 					end if;
 				
 				when data_st	=>
-					if (sr_cnt_in = 0) and (sr_cnt_out = 0) and (fifo_empty = '1') then
+					if (sr_cnt_in = 0) and (sr_cnt_out = 0) and (not cont_trans) then
 				    	cur_st	<= idle_st;
 					elsif ((fifo_din_valid = '0') and (fifo_req_sr (0) = '1'))	then --ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
 				    	cur_st	<= idle_st;
@@ -397,13 +384,19 @@ begin
 			elsif (cur_st = assert_ss_st) then	--Prepare MOSI for data propagation
 				if (first_dat_lsb) then			--LSB First
 					spi_mosi		<=	spi_sr_out(0);
+					if (cpha = '0') then
+						spi_sr_out (data_width_g - 2 downto 0)	<= 	spi_sr_out (data_width_g - 1 downto 1);
+					end if;
 				else							--MSB First
 					spi_mosi		<=	spi_sr_out (data_width_g - 1);
+					if (cpha = '0') then
+						spi_sr_out (data_width_g - 1 downto 1)	<= 	spi_sr_out (data_width_g - 2 downto 0);
+					end if;
 				end if;
 				
 			elsif (cur_st = data_st) then	--TX data
 				--Load SR at end of burst
-				if (sr_cnt_out = 0) and (fifo_din_valid = '1') then
+				if load_sr_data_d2 and (fifo_din_valid = '1') then
 					spi_sr_out	<=	fifo_din;
 					--Input SR Counter (Check for Zero)
 					if (sr_cnt_in = data_width_g) then
@@ -487,9 +480,11 @@ begin
 	spi_clk_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
-			spi_clk_i	<=	'0';
+			spi_clk_i		<=	'0';
+			spi_clk_i_d1	<=	'1';
 		
 		elsif rising_edge(clk) then
+			spi_clk_i_d1	<=	spi_clk_i;
 			if (int_rst = '1') then	--Internal reset
 				spi_clk_i	<= cpol;
 			else
@@ -588,5 +583,47 @@ begin
 			end if;
 		end if;
 	end process samp_en_proc;
+	
+	--------------------------------------------------------------------------
+	--------------------------	load_sr_data_proc proces	------------------
+	--------------------------------------------------------------------------
+	-- This process asserts LOAD_SR_DATA when sr_cnt_out changes from
+	-- (data_width_g - 2) to (data_width_g - 1), in order to assert
+	-- FIFO_REQ_DATA.
+	--------------------------------------------------------------------------
+	load_sr_data_proc: process (clk, rst)
+	begin
+		if (rst = reset_polarity_g) then
+			load_sr_data 	<= false;
+			load_sr_data_d1	<= false;
+			load_sr_data_d2	<= false;
+		elsif rising_edge(clk) then
+			load_sr_data	<= (sr_cnt_out = data_width_g - 2) and (prop_en = '1');	--Derivate
+			load_sr_data_d1	<=	load_sr_data;
+			load_sr_data_d2	<=	load_sr_data_d1;
+		end if;
+	end process load_sr_data_proc;
+	
+	--------------------------------------------------------------------------
+	--------------------------	cont_trans_proc proces	----------------------
+	--------------------------------------------------------------------------
+	-- This process asserts CONT_TRANS when another data burst should be
+	-- executed after the last one, which was transmitted
+	--------------------------------------------------------------------------
+	cont_trans_proc: process (clk, rst)
+	begin
+		if (rst = reset_polarity_g) then
+			cont_trans		<=	false;
+		elsif rising_edge(clk) then
+			if (cur_st = assert_ss_st) then
+				cont_trans <= true;
+			elsif (sr_cnt_out = data_width_g - 2) and (fifo_empty = '1') then	--No New transaction
+				cont_trans <= false;
+			else
+				cont_trans <= cont_trans or (load_sr_data_d2 and (fifo_din_valid = '1'));
+			end if;
+		end if;
+	end process cont_trans_proc;
+	
 	
 end architecture rtl_spi_master;

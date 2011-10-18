@@ -8,6 +8,6 @@ parameter reg_din_width_c	= 8;	//Input register width
 parameter payload_max_len_c	= 20;	//Maximum burst length
 
 int error = 0;
-int num_of_pkts = 1;
+int num_of_pkts = 20;
 
 `endif

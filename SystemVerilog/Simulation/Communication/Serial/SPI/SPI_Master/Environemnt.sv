@@ -42,6 +42,7 @@ function void build();
    drvr = new(in_intf,drvr_tx2sb, drvr_rx2sb);
    foreach(rcvr[i])
      rcvr[i]= new(spi_intf, rcvr_tx2sb, rcvr_rx2sb, i);
+   $display ("Receiver #0 sernum is (%d), #1 sernum is (%d)", rcvr[0].receiver_sernum, rcvr[1].receiver_sernum);
    $display(" %0d : Environemnt : end of build() method",$time);
 endfunction : build
 
@@ -112,8 +113,8 @@ task run();
    logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
    $display(" %0d : Environemnt : start of run() method",$time);
    build();
-   temp_regs[0] = 0; //rcvr[0].cpha;
-   temp_regs[1] = 0; //rcvr[0].cpol;
+   temp_regs[0] = rcvr[0].cpha;
+   temp_regs[1] = rcvr[0].cpol;
    reset();
    cfg_dut(clk_div_reg, temp_regs);
    start();

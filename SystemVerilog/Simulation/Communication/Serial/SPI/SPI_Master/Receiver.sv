@@ -40,16 +40,19 @@ packet rx_pkt;
 packet tx_pkt;
   forever
   begin
-    tx_data = '{default:0}; 
+    rx_cnt 	= 0;
+    tx_cnt	= 0;
+    tx_data = 1; 
 	spi_intf.spi_miso <= 1'bz;
 	@(negedge spi_intf.spi_ss[receiver_sernum]);
 	if (cpha == 0)	//Propagate data
-		spi_intf.spi_miso <= 0;
+	begin
+		spi_intf.spi_miso <= tx_data[0];
+		tx_cnt	= 1;
+	end
     while (spi_intf.spi_ss[receiver_sernum] == 0)
     begin
-	   rx_cnt 	= 0;
-	   tx_cnt	= 0;
-	   while ((rx_cnt + tx_cnt < data_width_c*2 - 1) && spi_intf.spi_ss[receiver_sernum] == 0)	//TX and RX one byte
+	   while ((rx_cnt + tx_cnt < data_width_c*2) && spi_intf.spi_ss[receiver_sernum] == 0)	//TX and RX one byte
 	   begin
 			@(posedge spi_intf.spi_clk or negedge spi_intf.spi_clk or posedge spi_intf.spi_ss[receiver_sernum]);		//SPI_CLK Event or Asserting spi_ss[receiver_sernum]
 			if (((cpol == 0) && (cpha == 0) && (spi_intf.spi_clk == 0)) 	//Propagate data
@@ -70,7 +73,9 @@ packet tx_pkt;
 				rx_cnt ++;
 			end
 	   end	//End while
-	   $display ("Received data is %0h", rx_data);
+	   rx_cnt 	= 0;
+	   tx_cnt	= 0;
+	   
 	   
 	   if (spi_intf.spi_ss[receiver_sernum] == 0)	//Store received data
 	   begin
@@ -85,14 +90,16 @@ packet tx_pkt;
     $display(" %0d : Receiver : Received a packet of length %0d",$time,rx_bytes.size);
     //Place received data to Scoreboard
 	rx_pkt = new();
-    rx_pkt.data = new [rx_bytes.size + 1](rx_bytes);
+    rx_pkt.data = new [rx_bytes.size](rx_bytes);
     rx_pkt.display();
     rcvr_rx2sb.put(rx_pkt); 
     rx_bytes.delete();   
 	
     //Place transmitted data to Scoreboard
 	tx_pkt = new();
-    tx_pkt.data = new[tx_bytes.size + 1](tx_bytes);
+    tx_pkt.data = new[tx_bytes.size](tx_bytes);
+    $display ("Receiver transmitted packet:");
+	tx_pkt.display();
     rcvr_tx2sb.put(tx_pkt); 
     tx_bytes.delete(); 
 	
