@@ -28,6 +28,11 @@ function new(virtual spi_interface.MASTER_SPI  spi_intf_new,
    end
 endfunction : new  
 
+task cfg_cpolpha(bit cpol_new, bit cpha_new);
+	this.cpol = cpol_new;
+	this.cpha = cpha_new;
+endtask : cfg_cpolpha
+
 task start();
 logic [data_width_c -1:0] rx_bytes[];
 logic [data_width_c -1:0] tx_bytes[];
@@ -87,7 +92,7 @@ packet tx_pkt;
 		tx_data = tx_data + 1;
 	   end
     end
-    $display(" %0d : Receiver : Received a packet of length %0d",$time,rx_bytes.size);
+    $display(" %0d : Receiver : Received a packet of length %0d:",$time,rx_bytes.size);
     //Place received data to Scoreboard
 	rx_pkt = new();
     rx_pkt.data = new [rx_bytes.size](rx_bytes);

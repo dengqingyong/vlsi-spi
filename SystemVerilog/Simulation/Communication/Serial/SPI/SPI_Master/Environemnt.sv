@@ -39,7 +39,7 @@ function void build();
    rcvr_tx2sb = new();
    rcvr_rx2sb = new();
    sb = new(drvr_tx2sb, drvr_rx2sb, rcvr_tx2sb, rcvr_rx2sb);
-   drvr = new(in_intf,drvr_tx2sb, drvr_rx2sb);
+   drvr = new(in_intf, spi_intf, drvr_tx2sb, drvr_rx2sb);
    foreach(rcvr[i])
      rcvr[i]= new(spi_intf, rcvr_tx2sb, rcvr_rx2sb, i);
    $display ("Receiver #0 sernum is (%d), #1 sernum is (%d)", rcvr[0].receiver_sernum, rcvr[1].receiver_sernum);
@@ -87,16 +87,29 @@ task cfg_dut(logic [reg_din_width_c - 1:0] clk_div_reg, logic [reg_din_width_c -
   in_intf.reg_din_val	<= 0;
 	
   @(posedge in_intf.clk);
+  foreach (rcvr[i])	//Config receivers
+	rcvr[i].cfg_cpolpha(cphapol_reg[1], cphapol_reg[0]);
   $display(" %0d : Environemnt : end of cfg_dut() method",$time);
 endtask :cfg_dut
+
+task rst_val_outs();
+	$display(" %0d : Environemnt : start of rst_val_outs() method",$time);
+	build();
+	drvr.rst_val_outs();
+	wait_for_end();
+	report();
+	$display(" %0d : Environemnt : end of rst_val_outs() method",$time);
+endtask : rst_val_outs
 
 task start();
   $display(" %0d : Environemnt : start of start() method",$time);
   fork
     drvr.start();
 	drvr.rx();
-    foreach(rcvr[i])
-		rcvr[i].start();
+//    foreach(rcvr[i])
+//		rcvr[i].start();
+	rcvr[0].start();
+	rcvr[1].start();
     sb.rx_get();
     sb.tx_get();
   join_any
@@ -111,10 +124,10 @@ endtask : wait_for_end
 
 task run();
    logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
+   temp_regs[0]=1'b1;
+   temp_regs[1]=1'b1;
    $display(" %0d : Environemnt : start of run() method",$time);
    build();
-   temp_regs[0] = rcvr[0].cpha;
-   temp_regs[1] = rcvr[0].cpol;
    reset();
    cfg_dut(clk_div_reg, temp_regs);
    start();
@@ -122,6 +135,67 @@ task run();
    report();
    $display(" %0d : Environemnt : end of run() method",$time);
 endtask : run
+
+/// Method to exetute transmission in CPOL, CPHA (00, 01, 10, 11)
+task run_4_clk_cfg();
+   logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
+	build();
+	reset();
+	//Start receivers & scoreboard
+	fork
+		drvr.rx();
+		rcvr[0].start();
+		rcvr[1].start();
+		sb.rx_get();
+		sb.tx_get();
+	join_none
+
+   //Config all 4 CPOL, CPHA states
+   repeat(4)
+   begin
+	cfg_dut(clk_div_reg, temp_regs);
+	drvr.start();	//Execute transmission
+	repeat(50)@(posedge in_intf.clk);
+	temp_regs++;
+   end
+   wait_for_end();
+   report();
+endtask : run_4_clk_cfg
+
+/// Method to exetute transmission in all clocks frequencies
+task run_clk_freq();
+   logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
+   logic [reg_din_width_c - 1:0] clk_regs = 3;	//2 is minimum value
+   logic [1:0] 					 cpolpha = '{default:0};
+   
+	build();
+	reset();
+	//Start receivers & scoreboard
+	fork
+		drvr.rx();
+		rcvr[0].start();
+		rcvr[1].start();
+		sb.rx_get();
+		sb.tx_get();
+	join_none
+
+   //Config all 4 CPOL, CPHA states, and all Clock Frequencies
+   num_of_pkts=1; //Only one packet transmission
+   repeat(3)//while (clk_regs > 0)
+   begin
+	$display ("Clk Reg: %h, CPOLPHA Reg : %h", clk_regs, temp_regs);
+	cfg_dut(clk_regs, temp_regs);
+	//cpolpha++;
+	clk_regs = 3;					//Change clock frequency
+	temp_regs[1:0] = cpolpha; //Change CPOL, CPHA
+	drvr.start();	//Execute transmission
+	repeat(50)@(posedge in_intf.clk);
+	temp_regs++;
+   end
+   wait_for_end();
+   report();
+endtask : run_clk_freq
+
 
 task report();
    $display("\n\n*************************************************");

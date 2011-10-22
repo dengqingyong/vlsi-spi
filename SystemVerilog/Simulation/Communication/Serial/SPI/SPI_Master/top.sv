@@ -28,7 +28,10 @@ spi_interface spi_intf(clk);
 //  Program block Testcase instance                //
 /////////////////////////////////////////////////////
 
-burst_testcase TC1 (in_intf, spi_intf);
+//burst_testcase TC1 (in_intf, spi_intf);
+//rst_testcase TC2 (in_intf, spi_intf);
+//cpolpha_testcase TC3 (in_intf, spi_intf);
+clk_freq_testcase TC4 (in_intf, spi_intf);
 
 /////////////////////////////////////////////////////
 //  DUT instance and signal connection             //
