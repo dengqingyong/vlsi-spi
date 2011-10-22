@@ -104,6 +104,7 @@ architecture rtl_spi_master of spi_master is
 	--General Signals
 	signal cur_st		:		spi_states;										--FSM Current State
 	signal spi_sr_out	:		std_logic_vector (data_width_g - 1 downto 0);	--Shift Register (Output)
+	signal spi_fifo_lat	:		std_logic_vector (data_width_g - 1 downto 0);	--Shift Register (Output) - Latch from FIFO
 	signal spi_sr_in	:		std_logic_vector (data_width_g - 1 downto 0);	--Shift Register (Input)
 	signal sr_cnt_out	:		natural range 0 to data_width_g;				--Number of transmitted bits
 	signal sr_cnt_in	:		natural range 0 to data_width_g;				--Number of received bits
@@ -369,6 +370,7 @@ begin
 	begin
 		if (rst = reset_polarity_g) then
 			spi_sr_out		<=	(others => '0');
+			spi_fifo_lat	<=	(others => '0');
 			spi_sr_in		<=	(others => '0');
 			spi_mosi		<=	'0';
 			sr_cnt_out		<=	0;
@@ -383,13 +385,13 @@ begin
 			
 			elsif (cur_st = assert_ss_st) then	--Prepare MOSI for data propagation
 				if (first_dat_lsb) then			--LSB First
-					spi_mosi		<=	spi_sr_out(0);
 					if (cpha = '0') then
+						spi_mosi		<=	spi_sr_out(0);
 						spi_sr_out (data_width_g - 2 downto 0)	<= 	spi_sr_out (data_width_g - 1 downto 1);
 					end if;
 				else							--MSB First
-					spi_mosi		<=	spi_sr_out (data_width_g - 1);
 					if (cpha = '0') then
+						spi_mosi		<=	spi_sr_out (data_width_g - 1);
 						spi_sr_out (data_width_g - 1 downto 1)	<= 	spi_sr_out (data_width_g - 2 downto 0);
 					end if;
 				end if;
@@ -397,8 +399,12 @@ begin
 			elsif (cur_st = data_st) then	--TX data
 				--Load SR at end of burst
 				if load_sr_data_d2 and (fifo_din_valid = '1') then
-					spi_sr_out	<=	fifo_din;
-					--Input SR Counter (Check for Zero)
+					if (cpha = '0') then
+						spi_sr_out		<=	fifo_din;
+					else
+						spi_fifo_lat	<=	fifo_din;
+					end if;
+					--Input SR Counter (Check for max value)
 					if (sr_cnt_in = data_width_g) then
 						sr_cnt_in	<=	0;
 					else
@@ -450,6 +456,9 @@ begin
 				--Idle (or in the middle of the transaction, between SPI_CLK edges)
 				else
 					if (sr_cnt_out = data_width_g) then
+						if (cpha = '1') then
+							spi_sr_out	<=	spi_fifo_lat;
+						end if;
 						sr_cnt_out	<=	0;
 					else
 						sr_cnt_out <= sr_cnt_out;
@@ -460,7 +469,6 @@ begin
 					else
 						sr_cnt_in <= sr_cnt_in;
 					end if;
-					spi_sr_out	<=	spi_sr_out;
 					spi_sr_in	<=	spi_sr_in;
 				end if;
 			else
