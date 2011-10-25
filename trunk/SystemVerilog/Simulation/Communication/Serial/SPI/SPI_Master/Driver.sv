@@ -2,23 +2,7 @@
 `define GUARD_DRIVER
 `include "Globals.sv"
 `include "Packet.sv"
-
-	class rand_inputs;
-		randc logic							fifo_din_valid;	//FIFO - Output data is valid
-		randc logic 						fifo_empty;		//FIFO Empty
-		randc logic [data_width_c - 1:0]	fifo_din;		//FIFO - Output data
-		 
-		 //Slave Select Address
-		randc logic	[$clog2(bits_of_slaves_c) - 1:0]	spi_slave_addr;	//Slave Address
-		 
-		 //Configuration Registers
-		randc logic [reg_addr_width_c - 1:0]	reg_addr;	//Register's Address
-		randc logic [reg_din_width_c - 1:0]		reg_din;	//Register's input data
-		randc logic 							reg_din_val;//Register's data is valid
-		
-		//SPI MISO
-		randc logic								spi_miso;	//MISO (SPI)
-	endclass
+'include "rand_inputs.sv"
 
 class Driver;
 virtual spi_master_in_interface.MASTER_INPUT  	in_intf;
@@ -178,6 +162,66 @@ task rx();
 	end
   end
 endtask : rx
+
+/// method to send packet to DUT, where FIFO_DIN_VALID is not asserts when it should////////
+task fifo_val_err();
+  packet pkt;
+  pkt = new gpkt;
+  //repeat(num_of_pkts)	//Transmit 'num_of_pkts' bursts
+  begin
+    //Simulate FIFO Empty
+	in_intf.fifo_empty		<=	1;
+	in_intf.fifo_din_valid	<=	0;
+	in_intf.fifo_din		<=	'{default:(0)};
+	 
+	repeat(19) @(posedge in_intf.clk);	//Wait for 20 clocks, before initializing transmission
+	in_intf.fifo_empty		<=	0;		//Negate FIFO Empty
+	if (in_intf.busy)
+		@(negedge in_intf.busy);
+
+    //// Randomize the packet /////
+    if ( pkt.randomize())
+     begin
+       $display (" %0d : Driver : Injecting FIFO_DIN_VALID is not asserted at time",$time);
+          
+       /////  send the packed bytes //////
+       foreach(pkt.data[i])
+       begin
+	    in_intf.spi_slave_addr	<=	pkt.spi_ss;
+		if (in_intf.fifo_req_data == 0)
+		begin
+			wait (in_intf.fifo_req_data);	//Wait for Request Data from FIFO
+			@(posedge in_intf.clk);
+		end
+		@(posedge in_intf.clk);	//One clock delay for fifo_din_valid (ERROR)
+		in_intf.fifo_din_valid	<=	1;
+		in_intf.fifo_din		<=	pkt.data[i]; 
+		@(posedge in_intf.clk);
+		in_intf.fifo_din_valid	<=	0;
+       end 
+  
+		//Simulate FIFO Empty - End of burst
+		in_intf.fifo_empty		<=	1;
+		in_intf.fifo_din_valid	<=	0;
+		in_intf.fifo_din		<=	'{default:0};
+  
+	   repeat(2)@(posedge in_intf.clk);
+	   @(negedge in_intf.busy);	//To ensure that last dout_valid from SPI Master has been asserted
+	   repeat(1)@(posedge in_intf.clk);	//In case BUSY negates with DOUT_VALID at the same clock
+	   if (in_intf.dout_valid)
+		  @(negedge in_intf.dout_valid)
+	   ->end_burst;
+       
+       $display(" %0d : Driver : Finished Driving the packet with length %0d",$time,pkt.data.size); 
+     end
+     else
+      begin
+         $display (" %0d Driver : ** Randomization failed. **",$time);
+         ////// Increment the error count in randomization fails ////////
+         error++;
+      end
+  end
+endtask : fifo_val_err
 
 endclass
 

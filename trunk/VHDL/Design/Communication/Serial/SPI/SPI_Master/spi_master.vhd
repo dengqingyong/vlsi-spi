@@ -7,19 +7,19 @@
 ------------------------------------------------------------------------------------------------
 -- Description: This is SPI Master. As long as the input FIFO is not empty, data will be
 --				transmitted to the relevant SPI Slave, which is determined by SPI slave address.
---				When transaction is active 'BUSY' signall will be '1'.
+--				When transaction is active, 'BUSY' signal will be '1'.
 --				The following registers may be modified during normal operation, when there
 --				is no active transmission:
 --				(*)	Configuration Register - to configure CPOL and CPHA
 -- 					(-) Bit 0	-	CPHA
 -- 					(-) Bit 1	-	CPOL
---				(*) Clock Divide Register - to configure system clock divide rate to the SPI clock:
---					(-)	When this register is '1', then divide rate is 2,
---					(-)	When this register is '2', then divide rate is 3, etc...
+--				(*) Clock Divide Register - to configure system clock divide factor to the SPI clock. 
+--					i.e: 	Suppose divide factor is 2, then each two system clock cycles (4 system clocks event), 
+--							SPI_CLK will change its polarity.
 --
 -- Requirements:
 --	 	(*)	Reset deactivation MUST be synchronized to the clock's rising edge!
---			Reset activetion may be asynchronized to the clock.
+--			Reset activation may be asynchronous to the clock.
 --		(*) FIFO should assert FIFO_DIN_VALID within one clock from FIFO_REQ_DATA.
 ------------------------------------------------------------------------------------------------
 -- Revision:
@@ -42,7 +42,7 @@ entity spi_master is
 				ss_polarity_g		:	std_logic	:= '0';		--Slave Select polarity. '0' is active low, '1' is active high
 				data_width_g		:	positive range 2 to positive'high	:= 8;		--Shift register is 8 bits. Range is from 2 - for the Shift Register
 				bits_of_slaves_g	:	positive	:= 1;		--Number of slaves bits (determines SPI_SS bus width)
-				reg_width_g			:	positive	:= 8;		--Number of bits in SPI Clock Divider Register
+				reg_width_g			:	positive	:= 8;		--Number of bits in SPI Configurations Register
 				dval_conf_reg_g		:	natural		:= 0;		--Default (initial) value of Configuration Register
 				dval_clk_reg_g		:	positive range 2 to positive'high		:= 2;		--Default (initial) value of Clock Divide Register (Divide system clock by 2 is the minimum)
 				reg_addr_width_g	:	positive	:= 8;		--Registers Configuration Address Width
@@ -68,7 +68,7 @@ entity spi_master is
 				fifo_empty			:	in	std_logic;											--FIFO is empty
 				
 				--Additional Ports:
-				spi_slave_addr		:	in std_logic_vector (integer(ceil(log(real(bits_of_slaves_g)) / log(2.0))) - 1 downto 0);	--Addressed slave
+				spi_slave_addr		:	in std_logic_vector (integer(ceil(log(real(bits_of_slaves_g)) / log(2.0))) downto 0);	--Addressed slave
 				
 				-- Configuration Registers Ports
 				reg_addr			:	in std_logic_vector (reg_addr_width_g - 1 downto 0);	--Address to registers
@@ -162,6 +162,7 @@ begin
 	begin
 		if (rst = reset_polarity_g) then
 			dout		<=	(others => '0');
+			sr_cnt_in_d1<=	0;
 			dout_valid	<=	'0';
 		elsif rising_edge (clk) then
 			sr_cnt_in_d1	<=	sr_cnt_in;
@@ -404,8 +405,21 @@ begin
 					else
 						spi_fifo_lat	<=	fifo_din;
 					end if;
-					--Input SR Counter (Check for max value)
-					if (sr_cnt_in = data_width_g) then
+					
+					if (samp_en = '1') then
+						--Inupt SR Counter
+						sr_cnt_in	<=	sr_cnt_in + 1;
+
+						--RX Data
+						if (first_dat_lsb) then		--First RX data is LSB
+							spi_sr_in (data_width_g - 1)			<=	spi_miso;
+							spi_sr_in (data_width_g - 2 downto 0)	<= 	spi_sr_in (data_width_g - 1 downto 1);
+						else						--First RX data is MSB
+							spi_sr_in (0)							<=	spi_miso;
+							spi_sr_in (data_width_g - 1 downto 1)	<= 	spi_sr_in (data_width_g - 2 downto 0);
+						end if;
+
+					elsif (sr_cnt_in = data_width_g) then --Input SR Counter (Check for max value)
 						sr_cnt_in	<=	0;
 					else
 						sr_cnt_in 	<= sr_cnt_in;
@@ -416,7 +430,7 @@ begin
 					--Output SR Counter
 					sr_cnt_out	<=	sr_cnt_out + 1;
 
-					--Input SR Counter (Check for Zero)
+					--Input SR Counter F
 					if (sr_cnt_in = data_width_g) then
 						sr_cnt_in	<=	0;
 					else
@@ -437,7 +451,7 @@ begin
 					--Inupt SR Counter
 					sr_cnt_in	<=	sr_cnt_in + 1;
 					
-					--Output SR Counter (Check for zero)
+					--Output SR Counter (Check for max value)
 					if (sr_cnt_out = data_width_g)  then
 						sr_cnt_out	<=	0;
 					else

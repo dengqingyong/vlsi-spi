@@ -431,11 +431,13 @@ begin
 		    mp_enc_type_reg		<=	(others => '0');
 		elsif (cur_st = rx_cmd_st) then
 			mp_enc_reg_ready	<=	'1';
-		    mp_enc_type_reg		<=	type_rd_c + (2**3)*wbs_tgd_i;	--wbs_tgd: write/read to / from SPI Registers / data
+		    mp_enc_type_reg		<=	type_rd_c;
+		    mp_enc_type_reg(4)	<=	wbs_tgd_i; --wbs_tgd: write/read to / from SPI Registers / data
 		
 		elsif (cur_st = tx_data_st) and (tx_cnt (blen_width_g) = '1') then	--End of TX Burst
 			mp_enc_reg_ready	<=	'1';
-		    mp_enc_type_reg		<=	type_wr_c + (2**3)*wbs_tgd_i;	--wbs_tgd: write/read to / from SPI Registers / data
+		    mp_enc_type_reg		<=	type_wr_c;
+		    mp_enc_type_reg(4)	<=	wbs_tgd_i; --wbs_tgd: write/read to / from SPI Registers / data
 		
 		else
 			mp_enc_reg_ready	<=	'0';
