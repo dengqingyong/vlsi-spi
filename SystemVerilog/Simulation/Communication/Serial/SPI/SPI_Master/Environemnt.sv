@@ -165,7 +165,7 @@ endtask : run_4_clk_cfg
 /// Method to exetute transmission in all clocks frequencies
 task run_clk_freq();
    logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
-   logic [reg_din_width_c - 1:0] clk_regs = 3;	//2 is minimum value
+   logic [reg_din_width_c - 1:0] clk_regs = 2;	//2 is minimum value
    logic [1:0] 					 cpolpha = '{default:0};
    
 	build();
@@ -180,21 +180,78 @@ task run_clk_freq();
 	join_none
 
    //Config all 4 CPOL, CPHA states, and all Clock Frequencies
-   num_of_pkts=1; //Only one packet transmission
-   repeat(3)//while (clk_regs > 0)
+   while (clk_regs > 0)
    begin
-	$display ("Clk Reg: %h, CPOLPHA Reg : %h", clk_regs, temp_regs);
-	cfg_dut(clk_regs, temp_regs);
-	//cpolpha++;
-	clk_regs = 3;					//Change clock frequency
-	temp_regs[1:0] = cpolpha; //Change CPOL, CPHA
-	drvr.start();	//Execute transmission
-	repeat(50)@(posedge in_intf.clk);
-	temp_regs++;
+	repeat (4) //For all CPOL, CPHA
+	begin
+		$display ("Clk Reg: %h, CPOLPHA Reg : %h", clk_regs, temp_regs);
+		cfg_dut(clk_regs, temp_regs);
+		temp_regs[1:0] = cpolpha; //Change CPOL, CPHA
+		drvr.start();	//Execute transmission
+		repeat(50)@(posedge in_intf.clk);
+		clk_regs++;					//Change clock frequency
+		if (cpolpha < 2'b3)
+			cpolpha++;
+		else
+			cpolpha = 2'b0;
+		temp_regs[1:0] = cpolpha [1:0];	//Change CPOL, CPHA
+	end
    end
    wait_for_end();
    report();
 endtask : run_clk_freq
+
+/// Method to write to registers during active tranasction (Should cause error)
+task wr_forb_regs();
+   logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
+   logic [reg_din_width_c - 1:0] clk_regs = 2;	//2 is minimum value
+   int err_before;	//Number of errors before firbedden config
+   
+	build();
+	reset();
+	cfg_dut(clk_regs, temp_regs);
+	//Start Driver, receivers & scoreboard
+	fork
+		drvr.rx();
+		rcvr[0].start();
+		rcvr[1].start();
+		sb.rx_get();
+		sb.tx_get();
+		drvr.start();	//Execute transmission
+	join_none
+
+	if (!in_intf.busy)
+		@(posedge in_intf.busy);
+	err_before = error;
+	cfg_dut(clk_regs, temp_regs);	//Try to write registers when SPI is BUSY
+	assert (err_before == error - 1)
+		error--;	//Error was incremeneted by cfg_dut
+	else
+		$error ("%t >> Expecting REG_ERR, but such did not detected", $time);
+   end
+   wait_for_end();
+   report();
+endtask : wr_forb_regs
+
+/// Method to write to Clock Divide register value less than 2 (1, 0)
+task wr_err_clk_div();
+	logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
+	logic [reg_din_width_c - 1:0] clk_regs;	//2 is minimum value
+	int err_before;	//Number of errors before firbedden config
+   
+	build();
+	reset();
+	clk_regs = 0;
+	cfg_dut(clk_regs, temp_regs);
+	clk_regs = 1;
+	cfg_dut(clk_regs, temp_regs);
+	assert (err_before == error - 2)
+		error=-2;	//Error was incremeneted by cfg_dut
+	else
+		$error ("%t >> Expecting REG_ERR, but such did not detected", $time);
+	wait_for_end();
+	report();
+endtask : wr_err_clk_div
 
 
 task report();
