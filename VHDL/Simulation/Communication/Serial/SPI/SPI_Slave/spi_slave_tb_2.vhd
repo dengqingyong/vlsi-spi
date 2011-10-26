@@ -15,6 +15,7 @@
 -- Revision:
 --			Number		Date		Name					Description			
 --			1.00		04.10.2011	Omer Shaked				Creation
+--			1.1			23.11.2011	Omer Shaked				Update following design change.
 ------------------------------------------------------------------------------------------------
 --	Todo:
 --			(1) 
@@ -34,6 +35,9 @@ entity spi_slave_tb_2 is
 				dval_cpol_g			:	std_logic	:= '0';		--Default (initial) value of CPOL
 				first_dat_lsb		:	boolean		:= true;	--TRUE: Transmit and Receive LSB first. FALSE - MSB first
 				default_dat_g		:	integer		:= 5;		--Default data transmitted to master when the FIFO is empty
+				spi_timeout_g		:	std_logic_vector (10 downto 0)	:=	"00000100000"; -- Number of clk cycles before timeout is declared
+				timeout_en_g		:	std_logic	:= '1';		--Timeout enable. '1' - enabled, '0' - disabled
+				dval_miso_g			:	std_logic	:= '0';		--Default value of spi_miso internal signal
 				clk_period_g		:	natural		:= 50000000	--Clock Period (50MHz)
 			);
 end entity spi_slave_tb_2;
@@ -50,7 +54,10 @@ component spi_slave
 				dval_cpha_g			:	std_logic	:= '0';		--Default (initial) value of CPHA
 				dval_cpol_g			:	std_logic	:= '0';		--Default (initial) value of CPOL
 				first_dat_lsb		:	boolean		:= true;	    --TRUE: Transmit and Receive LSB first. FALSE - MSB first
-				default_dat_g		:	integer		:= 0		--Default data transmitted to master when the FIFO is empty
+				default_dat_g		:	integer		:= 0;		--Default data transmitted to master when the FIFO is empty
+				spi_timeout_g		:	std_logic_vector (10 downto 0)	:=	"00000100000"; -- Number of clk cycles before timeout is declared
+				timeout_en_g		:	std_logic	:= '1';		--Timeout enable. '1' - enabled, '0' - disabled
+				dval_miso_g			:	std_logic	:= '0'		--Default value of spi_miso internal signal
 			);
 			
 	port 	(
@@ -74,11 +81,11 @@ component spi_slave
 				reg_din				:	in std_logic_vector (reg_width_g - 1 downto 0);			--Data to registers
 				reg_din_val			:	in std_logic;											--Data to registers is valid
 				reg_ack				:	out std_logic;											--Data to registers has been acknowledged
-				reg_err				:	out	std_logic;											--Error while trying to write data to registers
 				
 				-- Output from SPI slave
 				busy				:	out std_logic;											--'1' - BUSY: Transaction is active
 				interrupt			:	out std_logic;											--'1' - Slave Select turned NOT active in the middle of a transaction
+				timeout				:	out std_logic;											--'1' : SPI TIMEOUT - spi_clk stuck for spi_timeout_g clk cycles
 				dout				:	out std_logic_vector (data_width_g - 1 downto 0);		--Output data
 				dout_valid			:	out std_logic											--Output data is valid
 			);
@@ -99,12 +106,12 @@ end component spi_slave;
 	signal fifo_empty		:	std_logic;											
 
 	signal reg_din			:	std_logic_vector (reg_width_g - 1 downto 0) := (others => '0');	
-	signal reg_din_val		:	std_logic := '0';
-	signal reg_ack			:	std_logic;										
-	signal reg_err			:	std_logic;
+	signal reg_din_val		:	std_logic := '0';									
+	signal reg_ack			:	std_logic;	
 
 	signal busy				: 	std_logic;
 	signal interrupt		:	std_logic;
+	signal timeout			:	std_logic;
 	signal dout				:	std_logic_vector (data_width_g - 1 downto 0);											
 	signal dout_valid		:	std_logic;	
 
@@ -119,7 +126,10 @@ begin
 								dval_cpha_g			=>	dval_cpha_g,
 								dval_cpol_g			=>	dval_cpol_g,
 								first_dat_lsb		=>	first_dat_lsb,
-								default_dat_g		=>	default_dat_g
+								default_dat_g		=>	default_dat_g,
+								spi_timeout_g		=>	spi_timeout_g,
+								timeout_en_g		=>	timeout_en_g,
+								dval_miso_g			=>	dval_miso_g
 								)
 								port map
 								(
@@ -136,7 +146,7 @@ begin
 								reg_din				=>	reg_din,
 								reg_din_val			=>	reg_din_val,
 								reg_ack				=>	reg_ack,
-								reg_err				=>	reg_err,
+								timeout				=>	timeout,
 								busy				=>	busy,
 								interrupt			=>	interrupt,
 								dout				=>	dout,
@@ -149,11 +159,12 @@ begin
 	spi_clk_proc: process
 	begin
 		wait until falling_edge(spi_ss);
-		wait for 100 ns;
-		for i in 0 to 16 loop
+		wait for 90 ns;
+		for i in 0 to 15 loop
 			spi_clk	<=	not spi_clk;	-- SCK freq is 5 MHz
 			wait for 100 ns;
 		end loop;
+		wait until rising_edge(spi_ss);
 		spi_clk	<=	'1';
 		wait until falling_edge(spi_ss);
 		wait for 100 ns;
@@ -161,6 +172,7 @@ begin
 			spi_clk	<=	not spi_clk;	-- SCK freq is 5 MHz
 			wait for 100 ns;
 		end loop;
+		wait;
 	end process spi_clk_proc;
 
 	rst_proc:
@@ -171,7 +183,7 @@ begin
 		spi_ss	<=	'1';
 		wait for 200 ns;
 		spi_ss	<=	'0';
-		wait for 1600 ns;
+		wait for 1800 ns;
 		spi_ss	<=	'1';
 		wait for 300 ns;
 		spi_ss	<=	'0';
@@ -216,7 +228,9 @@ begin
 
 	conf_reg_proc: process
 	begin
-		reg_din	<=	(0	=>	'1', 1	=>	'1', others	=>	'0');
+		reg_din(0)	<=	'1';
+		reg_din(1)	<=	'1';
+		reg_din(reg_width_g - 1 downto 2)	<=	(others	=>	'0');
 		reg_din_val	<=	'0';
 		wait for 300 ns;
 		wait until (spi_ss	=	'1');

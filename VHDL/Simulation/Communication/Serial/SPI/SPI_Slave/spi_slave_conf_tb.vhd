@@ -1,16 +1,18 @@
 ------------------------------------------------------------------------------------------------
--- Entity Name 	:	SPI Slave Test Bench
--- File Name	:	spi_slave_tb.vhd
--- Generated	:	04.10.2011
+-- Entity Name 	:	SPI Slave Configuration Test Bench
+-- File Name	:	spi_slave_conf_tb.vhd
+-- Generated	:	26.10.2011
 -- Author		:	Beeri Schreiber and Omer Shaked
 -- Project		:	SPI Project
 ------------------------------------------------------------------------------------------------
--- Description: This is a SPI Slave TB
+-- Description: This is a SPI Slave TB 
+-- Goals:
+--						(1) Checks configuration change IN THE MIDDLE OF TRANSACTION.
+--						(2)	Checks different CPOL, CPHA combinations.
 ------------------------------------------------------------------------------------------------
 -- Revision:
 --			Number		Date		Name					Description			
---			1.00		04.10.2011	Omer Shaked				Creation
---			1.1			23.11.2011	Omer Shaked				Update following design change.
+--			1.00		26.10.2011	Omer Shaked				Creation
 ------------------------------------------------------------------------------------------------
 --	Todo:
 --			(1) 
@@ -21,23 +23,23 @@ use ieee.std_logic_1164.all;
 use ieee.std_logic_arith.all;
 use ieee.std_logic_unsigned.all;
 
-entity spi_slave_tb is
+entity spi_slave_conf_tb is
 	generic (	reset_polarity_g	:	std_logic	:= '0';		--Reset polarity. '0' is active low, '1' is active high
 				ss_polarity_g		:	std_logic	:= '0';		--Slave Select polarity. '0' is active low, '1' is active high
 				data_width_g		:	positive range 2 to positive'high	:= 8;		--Shift register is 8 bits. Range is from 2 - for the Shift Register
 				reg_width_g			:	positive	:= 8;		--Number of bits in SPI configuration Register
 				dval_cpha_g			:	std_logic	:= '0';		--Default (initial) value of CPHA
-				dval_cpol_g			:	std_logic	:= '0';		--Default (initial) value of CPOL
-				first_dat_lsb		:	boolean		:= true;	    --TRUE: Transmit and Receive LSB first. FALSE - MSB first
-				default_dat_g		:	integer		:= 0;		--Default data transmitted to master when the FIFO is empty
+				dval_cpol_g			:	std_logic	:= '1';		--Default (initial) value of CPOL
+				first_dat_lsb		:	boolean		:= true;	--TRUE: Transmit and Receive LSB first. FALSE - MSB first
+				default_dat_g		:	integer		:= 5;		--Default data transmitted to master when the FIFO is empty
 				spi_timeout_g		:	std_logic_vector (10 downto 0)	:=	"00000100000"; -- Number of clk cycles before timeout is declared
 				timeout_en_g		:	std_logic	:= '1';		--Timeout enable. '1' - enabled, '0' - disabled
 				dval_miso_g			:	std_logic	:= '0';		--Default value of spi_miso internal signal
-				clk_period_g		:	natural		:=	50000000--Clock Period (50MHz)
+				clk_period_g		:	natural		:= 50000000	--Clock Period (50MHz)
 			);
-end entity spi_slave_tb;
+end entity spi_slave_conf_tb;
 
-architecture sim of spi_slave_tb is
+architecture sim of spi_slave_conf_tb is
 
 -------------------------------	Components	------------------------------------
 component spi_slave
@@ -101,12 +103,12 @@ end component spi_slave;
 	signal fifo_empty		:	std_logic;											
 
 	signal reg_din			:	std_logic_vector (reg_width_g - 1 downto 0) := (others => '0');	
-	signal reg_din_val		:	std_logic := '0';
-	signal reg_ack			:	std_logic;										
+	signal reg_din_val		:	std_logic := '0';									
+	signal reg_ack			:	std_logic;	
 
 	signal busy				: 	std_logic;
-	signal timeout			:	std_logic;
 	signal interrupt		:	std_logic;
+	signal timeout			:	std_logic;
 	signal dout				:	std_logic_vector (data_width_g - 1 downto 0);											
 	signal dout_valid		:	std_logic;	
 
@@ -159,6 +161,15 @@ begin
 			spi_clk	<=	not spi_clk;	-- SCK freq is 5 MHz
 			wait for 100 ns;
 		end loop;
+		wait until rising_edge(spi_ss);
+		wait for 100 ns;
+		spi_clk	<=	'0'; -- cpol = 0
+		wait until falling_edge(spi_ss);
+		wait for 90 ns;
+		for i in 0 to 15 loop
+			spi_clk	<=	not spi_clk;	-- SCK freq is 5 MHz
+			wait for 100 ns;
+		end loop;
 		wait;
 	end process spi_clk_proc;
 
@@ -170,6 +181,10 @@ begin
 		spi_ss	<=	'1';
 		wait for 200 ns;
 		spi_ss	<=	'0';
+		wait for 1900 ns;
+		spi_ss	<=	'1';
+		wait for 300 ns;
+		spi_ss	<=	'0';
 		wait for 2000 ns;
 		spi_ss	<=	'1';
 		wait;
@@ -178,19 +193,29 @@ begin
 	spi_data_proc: process
 	begin
 		wait for 200 ns;
-		for i in 0 to 20 loop
-			spi_mosi	<= '0';
-			wait for 200 ns;
-			spi_mosi	<=	'1';
-			wait for 200 ns;
-		end loop;
+		spi_mosi	<=	'1';
+		wait for 900 ns;
+		spi_mosi	<=	'0';
 		wait;
 	end process spi_data_proc;
 	
 	fifo_data_proc: process
 	begin
+		fifo_empty	<=	'0';
+		fifo_din	<=	"00110011";
+		fifo_din_valid	<=	'0';
+		wait until rising_edge(fifo_req_data);
+		wait for 20 ns;
+		fifo_din_valid	<=	'1';
+		wait for 20 ns;
+		fifo_empty	<=	'0';
+		fifo_din_valid	<=	'0';
+		fifo_din	<=	"10101010";
+		wait until rising_edge(fifo_req_data);
+		wait for 20 ns;
+		fifo_din_valid	<=	'1';
+		wait for 20 ns;
 		fifo_empty	<=	'1';
-		fifo_din	<=	(others	=>	'0');
 		fifo_din_valid	<=	'0';
 		wait;
 	end process fifo_data_proc;
@@ -198,32 +223,15 @@ begin
 	conf_reg_proc: process
 	begin
 		reg_din(0)	<=	'1';
-		reg_din(1)	<=	'1';
+		reg_din(1)	<=	'0';
 		reg_din(reg_width_g - 1 downto 2)	<=	(others	=>	'0');
 		reg_din_val	<=	'0';
-		wait for 300 ns;
-		wait until (spi_ss	=	'1');
-		wait for 100 ns;
+		wait for 500 ns;
 		wait until rising_edge(clk);
 		reg_din_val	<=	'1';
-		wait until rising_edge(clk);
+		wait until rising_edge(reg_ack);
 		reg_din_val	<=	'0';
 		wait;
 	end process conf_reg_proc;
 	
 end architecture sim;
-
-
-
-
-
-
-
-
-
-								
-								
-								
-								
-								
-								

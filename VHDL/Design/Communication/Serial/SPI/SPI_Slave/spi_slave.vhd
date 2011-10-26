@@ -24,6 +24,20 @@
 -- Revision:
 --			Number		Date		Name					Description			
 --			1.00		2.10.2011	Omer Shaked				Creation
+--			1.1			23.10.2011	Omer Shaked				(1) Added: Timeout handling
+--															(2) Added: spi_miso output enable
+--															(3) Changed : Configuration Registers handling - 
+--																registers write can be done at any time.
+--															(4) Bug fixing [1]: Multiple transmitions when CPHA = 0
+--
+-- Fixed bugs Description:
+-- =======================
+-- [1] When cpha = 0, at the last EDGE of spi_clk in a transmition, the first bit of the next data word is being
+--     propogated, since if another transaction will start immediately (burst - more than one transaction without
+--     de-asserting the SS), on the first edge the data will already be sampled.
+--     Therefore, if transmition was actually terminated (No burst - SS de-asserted), we need to SHIFT-BACK the 
+--	   output shift register, in order to have the correct data received from the FIFO ready for the next
+--	   transaction.
 ------------------------------------------------------------------------------------------------
 --	Todo:
 --			(1) 
@@ -43,7 +57,10 @@ entity spi_slave is
 				dval_cpha_g			:	std_logic	:= '0';		--Default (initial) value of CPHA
 				dval_cpol_g			:	std_logic	:= '0';		--Default (initial) value of CPOL
 				first_dat_lsb		:	boolean		:= true;    --TRUE: Transmit and Receive LSB first. FALSE - MSB first
-				default_dat_g		:	integer		:= 0		--Default data transmitted to master when the FIFO is empty
+				default_dat_g		:	integer		:= 0;		--Default data transmitted to master when the FIFO is empty
+				spi_timeout_g		:	std_logic_vector (10 downto 0)	:=	"00000100000"; -- Number of clk cycles before timeout is declared
+				timeout_en_g		:	std_logic	:= '1';		--Timeout enable. '1' - enabled, '0' - disabled
+				dval_miso_g			:	std_logic	:= '0'		--Default value of spi_miso internal signal
 			);
 			
 	port 	(
@@ -67,10 +84,10 @@ entity spi_slave is
 				reg_din				:	in std_logic_vector (reg_width_g - 1 downto 0);			--Data to registers
 				reg_din_val			:	in std_logic;											--Data to registers is valid
 				reg_ack				:	out std_logic;											--Data to registers has been acknowledged
-				reg_err				:	out	std_logic;											--Error while trying to write data to registers
 				
 				-- Output from SPI slave
 				busy				:	out std_logic;											--'1' - BUSY: Transaction is active
+				timeout				:	out std_logic;											--'1' : SPI TIMEOUT - spi_clk stuck for spi_timeout_g clk cycles
 				interrupt			:	out std_logic;											--'1' - Slave Select turned NOT active in the middle of a transaction
 				dout				:	out std_logic_vector (data_width_g - 1 downto 0);		--Output data
 				dout_valid			:	out std_logic											--Output data is valid
@@ -80,8 +97,7 @@ end entity spi_slave;
 architecture rtl_spi_slave of spi_slave is
 
 	---------------------		Constants		-----------------------
-	-- constant div_reg_addr_c		:	natural 	:= 0;	--Clock Divider Register address
-	-- constant conf_reg_addr_c	:	natural 	:= 1;	--Clock Configuration Register address
+
 
 	---------------------		Types			-----------------------
 	type spi_slave_states is (
@@ -101,9 +117,10 @@ architecture rtl_spi_slave of spi_slave is
 	signal spi_sr_in	:		std_logic_vector (data_width_g - 1 downto 0);	--Shift Register (Input)
 	signal sr_cnt_out	:		natural range 0 to data_width_g;				--Number of transmitted bits
 	signal sr_cnt_in	:		natural range 0 to data_width_g;				--Number of received bits
-	-- signal sr_cnt_in_d1	:		natural range 0 to data_width_g;				--Derive of sr_cnt_in
 	signal fifo_req_sr	:		std_logic_vector (1 downto 0);					--Bit 0 => when '1' - indicates that FIFO_DIN_VALID should be asserted
 	signal spi_ss_in	:		std_logic;										--Inernal Slave Select
+	signal spi_miso_i	:		std_logic;										--Internal spi_miso signal
+	signal spi_tout_cnt : 		std_logic_vector (11 downto 0);					--SPI timeout counter => MSBit is checked
 	
 	-- Configuration Registers
 	signal conf_reg		:		std_logic_vector (reg_width_g - 1 downto 0);	--Configuration Register (CPOL, CPHA at this implementation)
@@ -115,8 +132,8 @@ architecture rtl_spi_slave of spi_slave is
 	--Configuration Register:
 	-- * Bit 0	-	CPHA
 	-- * Bit 1	-	CPOL
-	alias  cpha			:		std_logic is conf_reg (0);
-	alias  cpol			:		std_logic is conf_reg (1);
+	signal cpha			:		std_logic; -- spi protocol CPHA value - isn't updated during transaction!
+	signal cpol			:		std_logic; -- spi protocol CPOL value - isn't updated during transaction!
 	
 	--Sample and Propagate Signals
 	signal samp_en		:		std_logic;										--Sample data
@@ -139,6 +156,10 @@ begin
 	
 	spi_clk_i_proc:
 	spi_clk_i	<=	spi_clk;
+	
+	spi_miso_en_proc:
+	spi_miso	<=	spi_miso_i when (spi_ss_in = ss_polarity_g)
+							   else 'Z';
 	
 	--------------------------------------------------------------------------
 	-------------------------	fsm process	----------------------------------
@@ -200,7 +221,13 @@ begin
 					& "Aborting Transmission"
 					severity error;
 				elsif (spi_ss_in /= ss_polarity_g) then -- Slave select NOT active
-					if (sr_cnt_out /= 0) or (sr_cnt_in /= 0) then
+					if (cpha = '0') and (sr_cnt_out > 1) then
+						next_st	<=	break_st;
+					elsif (cpha = '0') and (sr_cnt_in /= 0) then
+						next_st	<=	break_st;
+					elsif (cpha = '1') and (sr_cnt_out /= 0) then
+						next_st	<=	break_st;
+					elsif (cpha = '1') and (sr_cnt_in /= 0) then
 						next_st	<=	break_st;
 					else -- Slave Select was De-activated before the start of a new transaction
 						if (sr_out_data = '0') then -- Default data
@@ -321,7 +348,7 @@ begin
 			spi_sr_out		<=	(others => '0');
 			sr_out_data		<=	'0';
 			spi_sr_in		<=	(others => '0');
-			spi_miso		<=	'Z';
+			spi_miso_i		<=	dval_miso_g; --Default spi_miso value
 			sr_cnt_out		<=	0;
 			sr_cnt_in		<=	0;
 		
@@ -329,7 +356,7 @@ begin
 			case cur_st is
 			
 				when idle_st	=>	
-					spi_miso	<=	'Z';
+					spi_miso_i	<=	dval_miso_g;
 					if (spi_ss_in = ss_polarity_g) then -- start of transaction and FIFO data is NOT ready
 						if (cpha = '0') then -- need to propogate first bit of Tx data
 							sr_cnt_out		<=	1; -- first bit is being propogated
@@ -338,10 +365,10 @@ begin
 							sr_out_data		<=	'0';
 							--TX Data
 							if (first_dat_lsb) then		--First TX data is LSB
-								spi_miso								<=	default_data (0);
+								spi_miso_i								<=	default_data (0);
 								spi_sr_out (data_width_g - 2 downto 0)	<= 	default_data (data_width_g - 1 downto 1);
 							else						--First TX data is MSB
-								spi_miso								<=	default_data (data_width_g - 1);
+								spi_miso_i								<=	default_data (data_width_g - 1);
 								spi_sr_out (data_width_g - 1 downto 1)	<= 	default_data (data_width_g - 2 downto 0);
 							end if;
 						else -- cpha = 1
@@ -353,7 +380,7 @@ begin
 					end if;
 				
 				when fifo_load_st	=>
-					spi_miso	<=	'Z';
+					spi_miso_i	<=	dval_miso_g;
 					if (fifo_din_valid = '1') then
 						if (spi_ss_in /= ss_polarity_g) then
 							spi_sr_out	<=	fifo_din;
@@ -366,10 +393,10 @@ begin
 								sr_out_data		<=	'1';
 								--TX Data
 								if (first_dat_lsb) then		--First TX data is LSB
-									spi_miso								<=	default_data (0);
+									spi_miso_i								<=	default_data (0);
 									spi_sr_out (data_width_g - 2 downto 0)	<= 	default_data (data_width_g - 1 downto 1);
 								else						--First TX data is MSB
-									spi_miso								<=	default_data (data_width_g - 1);
+									spi_miso_i								<=	default_data (data_width_g - 1);
 									spi_sr_out (data_width_g - 1 downto 1)	<= 	default_data (data_width_g - 2 downto 0);
 								end if;
 							else -- cpha = 1
@@ -382,17 +409,17 @@ begin
 					end if;
 					
 				when ready_st	=>
-					spi_miso	<=	'Z';
+					spi_miso_i	<=	dval_miso_g;
 					if (spi_ss_in = ss_polarity_g) then
 						if (cpha = '0') then -- need to propogate first bit of Tx data
 							sr_cnt_out		<=	1; -- first bit is being propogated
 							sr_cnt_in		<=	0;
 							--TX Data
 							if (first_dat_lsb) then		--First TX data is LSB
-								spi_miso								<=	spi_sr_out (0);
+								spi_miso_i								<=	spi_sr_out (0);
 								spi_sr_out (data_width_g - 2 downto 0)	<= 	spi_sr_out (data_width_g - 1 downto 1);
 							else						--First TX data is MSB
-								spi_miso								<=	spi_sr_out (data_width_g - 1);
+								spi_miso_i								<=	spi_sr_out (data_width_g - 1);
 								spi_sr_out (data_width_g - 1 downto 1)	<= 	spi_sr_out (data_width_g - 2 downto 0);
 							end if;
 						else -- cpha = 1
@@ -402,7 +429,7 @@ begin
 					end if;
 			
 				when break_st	=>
-					spi_miso	<=	'Z';
+					spi_miso_i	<=	dval_miso_g;
 					if (spi_ss_in = ss_polarity_g) then
 						if (cpha = '0') then -- need to propogate first bit of Tx data
 							sr_cnt_out		<=	1; -- first bit is being propogated
@@ -411,10 +438,10 @@ begin
 							sr_out_data		<=	'0';
 							--TX Data
 							if (first_dat_lsb) then		--First TX data is LSB
-								spi_miso								<=	default_data (0);
+								spi_miso_i								<=	default_data (0);
 								spi_sr_out (data_width_g - 2 downto 0)	<= 	default_data (data_width_g - 1 downto 1);
 							else						--First TX data is MSB
-								spi_miso								<=	default_data (data_width_g - 1);
+								spi_miso_i								<=	default_data (data_width_g - 1);
 								spi_sr_out (data_width_g - 1 downto 1)	<= 	default_data (data_width_g - 2 downto 0);
 							end if;
 						else -- cpha = 1
@@ -427,7 +454,16 @@ begin
 
 				when data_st	=>
 					if (spi_ss_in /= ss_polarity_g) then -- Slave select NOT active
-						spi_miso	<=	'Z';
+						spi_miso_i	<=	dval_miso_g;
+						if (cpha = '0') and (sr_cnt_out = 1) then -- Shift-BACK the data of out_sr
+							if (first_dat_lsb) then		--First TX data is LSB
+								spi_sr_out (data_width_g - 1 downto 1)	<= 	spi_sr_out (data_width_g - 2 downto 0);
+								spi_sr_out (0)							<=	spi_miso_i;
+							else						--First TX data is MSB
+								spi_sr_out (data_width_g - 2 downto 0)	<= 	spi_sr_out (data_width_g - 1 downto 1);
+								spi_sr_out (data_width_g - 1)			<=	spi_miso_i;
+							end if;
+						end if;
 					else                                 -- Slave Select is ACTIVE
 						-- prepare new data in spi_sr_out to allow multiple transmitions
 						if (sr_cnt_out = 0) and (fifo_din_valid = '1') then
@@ -438,7 +474,6 @@ begin
 							sr_out_data	<=	'0';
 							sr_cnt_out	<=	0;
 						end if;
-						
 						-- prepare to receive new data to spi_sr_in to allow multiple transmitions
 						if (sr_cnt_in = data_width_g) then
 							sr_cnt_in 	<=	0;
@@ -449,10 +484,10 @@ begin
 							sr_cnt_out	<=	sr_cnt_out + 1;
 							--TX Data
 							if (first_dat_lsb) then		--First TX data is LSB
-								spi_miso								<=	spi_sr_out (0);
+								spi_miso_i								<=	spi_sr_out (0);
 								spi_sr_out (data_width_g - 2 downto 0)	<= 	spi_sr_out (data_width_g - 1 downto 1);
 							else						--First TX data is MSB
-								spi_miso								<=	spi_sr_out (data_width_g - 1);
+								spi_miso_i								<=	spi_sr_out (data_width_g - 1);
 								spi_sr_out (data_width_g - 1 downto 1)	<= 	spi_sr_out (data_width_g - 2 downto 0);
 							end if;
 						----	Sample Data	-----
@@ -470,7 +505,7 @@ begin
 					end if;
 					
 				when others		=>
-					spi_miso	<=	'Z';
+					spi_miso_i	<=	dval_miso_g;
 				
 			end case;
 		end if;
@@ -528,41 +563,93 @@ begin
 
 	
 	--------------------------------------------------------------------------
-	------------------	spi_conf_reg_proc proces	--------------------------
+	------------------	spi_conf process	----------------------------------
 	--------------------------------------------------------------------------
-	-- This process stores data to Configuration Register.
-	-- REG_ACK (Register Acknowledged) or REG_ERR (Register Error) will be
-	-- asserted as required.
-	-- If Slave Select is ACTIVE - a conf. change can't be done.
-	-- If Slave Select turns ACTIVE during conf. change - the change isn't 
-	-- being performed.
+	-- This process deals with Configuration values.
+	-- Configuration change - write to the configuration register, can be done
+	-- AT ANY TIME.
+	-- REG_ACK (Register Acknowledged) will be asserted as required.
+	-- CPHA and CPOL are sampled at the begining of the transaction,
+	-- so a configuration change at the middle of an active transaction, will
+	-- only take place at the following transaction (when SS turns NOT active).
 	--------------------------------------------------------------------------
 	spi_conf_reg_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
-			conf_reg	<=	(0	=>	dval_cpha_g, 1	=>	dval_cpol_g, others	=>	'0');
-			reg_ack	<= '0';
-			reg_err	<= '0';
+			conf_reg(0)	<=	dval_cpha_g;
+			conf_reg(1)	<=	dval_cpol_g;
+			conf_reg(reg_width_g - 1 downto 2)	<=	(others	=>	'0');
+			reg_ack		<= '0';
 			
 		elsif rising_edge(clk) then
-			if (reg_din_val = '1') then
-				if (spi_ss_in = ss_polarity_g) then 		--Transmission is in progress. Cannot change configuration during transmission
-					reg_ack		<= '0';
-					reg_err		<= '1';
-					report "Time: " & time'image(now) & ", SPI Slave >> Writing to registers during transmission is forbidden!!!" & LF &
-					"Transmission will continue!!!"
-					severity error;
-				else										--Write to Registers
-					conf_reg	<=	reg_din;
-					reg_ack		<= '1';
-					reg_err		<= '0';
-				end if;
-
-			else	--No action should be taken
+			if (reg_din_val = '1') then		--Write to Registers
+				conf_reg	<=	reg_din;
+				reg_ack		<= '1';
+			else							--No action should be taken
 				reg_ack	<= '0';
-				reg_err	<= '0';
 			end if;
 		end if;
 	end process spi_conf_reg_proc;
+	
+	spi_conf_val_proc: process (clk, rst)
+	begin
+		if (rst = reset_polarity_g) then
+			cpha	<=	dval_cpha_g;
+			cpol	<=	dval_cpol_g;
+		
+		elsif rising_edge(clk) then
+			if (cur_st /= data_st) and (spi_ss_in /= ss_polarity_g) then 	-- Allow sampling of new values
+				cpha	<=	conf_reg(0);
+				cpol	<=	conf_reg(1);
+			end if;
+		end if;
+	end process spi_conf_val_proc;
+		
+	--------------------------------------------------------------------------
+	------------------		spi_timeout process		  ------------------------
+	--------------------------------------------------------------------------
+	-- This process handles with the timeout output signal.
+	-- Timeout is asserted if:
+	-- (1) Transaction is active (SS = '0')
+	-- (2) spi_clk is STUCK at the same value for spi_timout_g clk cycles
+	--------------------------------------------------------------------------
+	spi_timeout_cnt_proc: process (clk, rst)
+	begin
+		if (rst = reset_polarity_g) then
+			spi_tout_cnt (10 downto 0)	<=	spi_timeout_g;
+			spi_tout_cnt (11)			<=	'0';
+			
+		elsif rising_edge(clk) then
+			if (spi_ss_in /= ss_polarity_g) then -- transaction is NOT active
+				spi_tout_cnt (10 downto 0)	<=	spi_timeout_g;
+				spi_tout_cnt (11)			<=	'0';
+			else -- spi_ss is ACTIVE
+				if (spi_clk_i /= spi_clk_reg) then -- spi_clk was toggled
+					spi_tout_cnt (10 downto 0)	<=	spi_timeout_g;
+					spi_tout_cnt (11)			<=	'0';
+				elsif (spi_tout_cnt(11) /= '1') then -- Timeout isn't asserted
+						spi_tout_cnt	<=	spi_tout_cnt - 1;
+				end if;
+			end  if;
+		end if;
+	end process spi_timeout_cnt_proc;
+	
+	spi_timeout_proc: process (clk, rst)
+	begin
+		if (rst = reset_polarity_g) then
+			timeout	<=	'0';
+			
+		elsif rising_edge(clk) then
+			if (timeout_en_g = '0') then -- Timeout signal is disabled
+				timeout	<=	'0';
+			else -- timeout enabled
+				if (spi_tout_cnt(11) = '1') then -- counter has reached timeout
+					timeout	<=	'1';
+				else 
+					timeout	<=	'0';
+				end if;
+			end if;
+		end if;
+	end process spi_timeout_proc;
 
 end architecture rtl_spi_slave;
