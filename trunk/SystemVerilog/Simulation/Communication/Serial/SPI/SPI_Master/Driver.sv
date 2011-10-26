@@ -2,7 +2,7 @@
 `define GUARD_DRIVER
 `include "Globals.sv"
 `include "Packet.sv"
-'include "rand_inputs.sv"
+`include "rand_inputs.sv"
 
 class Driver;
 virtual spi_master_in_interface.MASTER_INPUT  	in_intf;
@@ -55,7 +55,7 @@ task start();
        /////  send the packed bytes //////
        foreach(pkt.data[i])
        begin
-	    in_intf.spi_slave_addr	<=	pkt.spi_ss;
+		in_intf.spi_slave_addr	<=	pkt.spi_ss;
 		if (in_intf.fifo_req_data == 0)
 		begin
 			wait (in_intf.fifo_req_data);	//Wait for Request Data from FIFO
@@ -167,7 +167,7 @@ endtask : rx
 task fifo_val_err();
   packet pkt;
   pkt = new gpkt;
-  //repeat(num_of_pkts)	//Transmit 'num_of_pkts' bursts
+  repeat(num_of_pkts)	//Transmit 'num_of_pkts' bursts
   begin
     //Simulate FIFO Empty
 	in_intf.fifo_empty		<=	1;
@@ -188,9 +188,9 @@ task fifo_val_err();
        foreach(pkt.data[i])
        begin
 	    in_intf.spi_slave_addr	<=	pkt.spi_ss;
-		if (in_intf.fifo_req_data == 0)
+		if (!in_intf.fifo_req_data)
 		begin
-			wait (in_intf.fifo_req_data);	//Wait for Request Data from FIFO
+			@(posedge in_intf.fifo_req_data);	//Wait for Request Data from FIFO
 			@(posedge in_intf.clk);
 		end
 		@(posedge in_intf.clk);	//One clock delay for fifo_din_valid (ERROR)
@@ -206,11 +206,11 @@ task fifo_val_err();
 		in_intf.fifo_din		<=	'{default:0};
   
 	   repeat(2)@(posedge in_intf.clk);
-	   @(negedge in_intf.busy);	//To ensure that last dout_valid from SPI Master has been asserted
-	   repeat(1)@(posedge in_intf.clk);	//In case BUSY negates with DOUT_VALID at the same clock
+	   if (in_intf.busy)
+		@(negedge in_intf.busy);	//To ensure that last dout_valid from SPI Master has been asserted
+	   @(posedge in_intf.clk);	//In case BUSY negates with DOUT_VALID at the same clock
 	   if (in_intf.dout_valid)
 		  @(negedge in_intf.dout_valid)
-	   ->end_burst;
        
        $display(" %0d : Driver : Finished Driving the packet with length %0d",$time,pkt.data.size); 
      end

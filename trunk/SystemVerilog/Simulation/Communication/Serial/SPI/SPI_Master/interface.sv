@@ -17,7 +17,7 @@ interface spi_master_in_interface(input bit clk);
   logic [data_width_c - 1:0]	fifo_din;		//FIFO - Output data
   
   //Slave Select Address
-  logic	[$clog2(bits_of_slaves_c) - 1:0]	spi_slave_addr;	//Slave Address
+  logic	[$clog2(bits_of_slaves_c) :0]	spi_slave_addr;	//Slave Address
   
   //Configuration Registers
   logic [reg_addr_width_c - 1:0]	reg_addr;	//Register's Address

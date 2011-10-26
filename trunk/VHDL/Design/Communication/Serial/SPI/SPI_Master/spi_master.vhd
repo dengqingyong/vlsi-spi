@@ -115,6 +115,7 @@ architecture rtl_spi_master of spi_master is
 	signal load_sr_data_d1:		boolean;										--TRUE when sr_cnt_out changes from (data_width_g - 2) to (data_width_g - 1) - One clock delay
 	signal load_sr_data_d2:		boolean;										--TRUE when sr_cnt_out changes from (data_width_g - 2) to (data_width_g - 1) - Two clocks delay
 	signal cont_trans	:		boolean;										--TRUE to continue transaction at last FIFO data
+	signal fifo_req_data_i:		std_logic;										--Internal FIFO Request Data
 	
 	-- Configuration Registers
 	signal div_reg		:		std_logic_vector (reg_width_g - 1 downto 0);	--Divide System Clock by (this number - 2)
@@ -150,6 +151,9 @@ begin
 	busy_proc:
 	busy	<= '0' when (cur_st = idle_st)
 				else '1';
+				
+	fifo_req_data_int_proc:
+	fifo_req_data	<=	fifo_req_data_i;
 
 
 	--------------------------------------------------------------------------
@@ -215,24 +219,24 @@ begin
 	fifo_data_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
-			fifo_req_data	<= '0';	
+			fifo_req_data_i	<= '0';	
 			fifo_req_sr		<= "00";
 		elsif rising_edge(clk) then
 			if (cur_st = idle_st) and (fifo_empty = '0') then	--Request for data
-				fifo_req_data	<= '1';
+				fifo_req_data_i	<= '1';
 				fifo_req_sr	(0) <= fifo_req_sr (1);
 				fifo_req_sr (1)	<= '1';
 			elsif (cur_st = data_st) then
 				if (load_sr_data) and (fifo_empty = '0') then
-					fifo_req_data	<= '1';						--End of SR TX. Request for data from FIFO
+					fifo_req_data_i	<= '1';						--End of SR TX. Request for data from FIFO
 					fifo_req_sr		<= "10";
 				else
-					fifo_req_data	<= '0';
+					fifo_req_data_i	<= '0';
 					fifo_req_sr	(0) <= fifo_req_sr (1);
 					fifo_req_sr (1)	<= '0';
 				end if;
 			else
-				fifo_req_data		<= '0';
+				fifo_req_data_i		<= '0';
 				fifo_req_sr	(0) 	<= fifo_req_sr (1);
 				fifo_req_sr (1)		<= '0';
 			end if;
@@ -261,6 +265,11 @@ begin
 				when load_sr_st	=>
 					if (fifo_din_valid = '1') then
 						cur_st	<=	assert_ss_st;
+					elsif (fifo_req_data_i = '0') then
+				    	cur_st	<= idle_st;
+						report "Time: " & time'image(now) & ", SPI Master >> Expecting FIFO_DIN_VALID = '1' but it is '0'" & LF
+						& "Aborting Transmission"
+						severity error;
 					else
 						cur_st 	<= cur_st;
 					end if;
