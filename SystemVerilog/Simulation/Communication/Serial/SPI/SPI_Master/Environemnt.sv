@@ -42,7 +42,6 @@ function void build();
    drvr = new(in_intf, spi_intf, drvr_tx2sb, drvr_rx2sb);
    foreach(rcvr[i])
      rcvr[i]= new(spi_intf, rcvr_tx2sb, rcvr_rx2sb, i);
-   $display ("Receiver #0 sernum is (%d), #1 sernum is (%d)", rcvr[0].receiver_sernum, rcvr[1].receiver_sernum);
    $display(" %0d : Environemnt : end of build() method",$time);
 endfunction : build
 
@@ -106,10 +105,8 @@ task start();
   fork
     drvr.start();
 	drvr.rx();
-//    foreach(rcvr[i])
-//		rcvr[i].start();
-	rcvr[0].start();
-	rcvr[1].start();
+	for (int i = 0; i < bits_of_slaves_c ; i++)
+		rcvr[i].start();
     sb.rx_get();
     sb.tx_get();
   join_any
@@ -144,8 +141,8 @@ task run_4_clk_cfg();
 	//Start receivers & scoreboard
 	fork
 		drvr.rx();
-		rcvr[0].start();
-		rcvr[1].start();
+		for (int i = 0; i < bits_of_slaves_c ; i++)
+			rcvr[i].start();
 		sb.rx_get();
 		sb.tx_get();
 	join_none
@@ -160,12 +157,24 @@ task run_4_clk_cfg();
    end
    wait_for_end();
    report();
-endtask : run_4_clk_cfg
+endtask : run_4_clk_cfg/// Method to exetute transmission in CPOL, CPHA (00, 01, 10, 11)
+
+/// Method to execute FIFO Valid Error
+task fifo_val_err();
+   logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
+	build();
+	reset();
+
+	cfg_dut(clk_div_reg, temp_regs);
+	drvr.fifo_val_err();	//Execute transmission with error
+   report();
+endtask : fifo_val_err
 
 /// Method to exetute transmission in all clocks frequencies
 task run_clk_freq();
    logic [reg_din_width_c - 1:0] temp_regs = '{default:0};
    logic [reg_din_width_c - 1:0] clk_regs = 2;	//2 is minimum value
+   logic [reg_din_width_c - 1:0] max_clk_regs_v = '{default:1};	//Maximum value
    logic [1:0] 					 cpolpha = '{default:0};
    
 	build();
@@ -173,14 +182,14 @@ task run_clk_freq();
 	//Start receivers & scoreboard
 	fork
 		drvr.rx();
-		rcvr[0].start();
-		rcvr[1].start();
+		for (int i = 0; i < bits_of_slaves_c ; i++)
+			rcvr[i].start();
 		sb.rx_get();
 		sb.tx_get();
 	join_none
 
    //Config all 4 CPOL, CPHA states, and all Clock Frequencies
-   while (clk_regs > 0)
+   while (clk_regs > 0 && clk_regs <= max_clk_regs_v)
    begin
 	repeat (4) //For all CPOL, CPHA
 	begin
@@ -190,7 +199,7 @@ task run_clk_freq();
 		drvr.start();	//Execute transmission
 		repeat(50)@(posedge in_intf.clk);
 		clk_regs++;					//Change clock frequency
-		if (cpolpha < 2'b3)
+		if (cpolpha < 2)
 			cpolpha++;
 		else
 			cpolpha = 2'b0;
@@ -213,8 +222,8 @@ task wr_forb_regs();
 	//Start Driver, receivers & scoreboard
 	fork
 		drvr.rx();
-		rcvr[0].start();
-		rcvr[1].start();
+		for (int i = 0; i < bits_of_slaves_c ; i++)
+			rcvr[i].start();
 		sb.rx_get();
 		sb.tx_get();
 		drvr.start();	//Execute transmission
@@ -228,7 +237,6 @@ task wr_forb_regs();
 		error--;	//Error was incremeneted by cfg_dut
 	else
 		$error ("%t >> Expecting REG_ERR, but such did not detected", $time);
-   end
    wait_for_end();
    report();
 endtask : wr_forb_regs
@@ -246,7 +254,7 @@ task wr_err_clk_div();
 	clk_regs = 1;
 	cfg_dut(clk_regs, temp_regs);
 	assert (err_before == error - 2)
-		error=-2;	//Error was incremeneted by cfg_dut
+		error=err_before;	//Error was incremeneted by cfg_dut
 	else
 		$error ("%t >> Expecting REG_ERR, but such did not detected", $time);
 	wait_for_end();
