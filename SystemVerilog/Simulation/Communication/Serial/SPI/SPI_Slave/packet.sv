@@ -2,26 +2,26 @@
 `define GUARD_PACKET
 `include "globals.sv"
 
+//`timescale 1ps/1ps
+
 class packet;
 
-rand byte data[];	//Payload using Dynamic array, size is generated on the fly
-rand bit burst_mode[]; //0 - the SS is deasserted and ends the current transaction
-					 //1 - the SS remains active, and next transaction starts immediately
-rand bit [3:0] delay[];//Number of delay cycles between transactions
-rand bit [3:0] freq; //spi_clk frequency 
+rand logic [data_width_c - 1:0] data[];	//Payload using Dynamic array, size is generated on the fly
+rand logic burst_mode[]; //0 - the SS is deasserted and ends the current transaction
+						//1 - the SS remains active, and next transaction starts immediately
+rand logic [3:0] delay[];//Number of delay cycles between transactions
+rand logic [3:0] freq; //spi_clk frequency 
 
 constraint payload_size_c { data.size inside { [1 : payload_max_len_c]};}
 
 constraint freq_c { freq inside {[2:15]}; }
 
-constraint burst_mode_c { burst_mode.size == data.size;
-						  burst_mode[size - 1] == 0;	} // on the last data byte, de-assert SS
+constraint burst_mode_c { burst_mode.size == data.size;}
 
 constraint delay_c { 
 	delay.size == data.size;
-	foreach (burst_mode[i])
-		(burst_mode == 0) -> delay inside {[2:15]};
-}
+	foreach (delay[i])
+		delay[i] inside {[1:15]};}
 	
 constraint data_delay_c { solve data before burst_mode; }
 
@@ -34,13 +34,13 @@ virtual function void display();
   $display("Packet Length is : %d ",data.size);
   $display("Packet data: \n");
   foreach(data[i]) 
-  $write("%3d : %0h ",i ,data[i]); 
+	$write("%3d : %0h ",i ,data[i]); 
   $display("Packet Burst mode: \n");
   foreach(burst_mode[i]) 
-  $write("%3d : %0h ",i ,burst_mode[i]); 
+	$write("%3d : %0h ",i ,burst_mode[i]); 
   $display("Packet delay time: \n");
   foreach(delay[i]) 
-  $write("%3d : %0h ",i ,delay[i]); 
+	$write("%3d : %0h ",i ,delay[i]); 
   $write("Packet spi_clk frequency : %0h ",freq); 
   $display("\n----------------------------------------------------------- \n");
 endfunction : display

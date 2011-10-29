@@ -4,6 +4,8 @@
 `include "packet.sv"
 `include "coverage.sv"
 
+//`timescale 1ps/1ps
+
 class Scoreboard;
 
 mailbox drvr_tx2sb;
@@ -12,7 +14,7 @@ mailbox rcvr_tx2sb;
 mailbox rcvr_rx2sb;
 coverage cov = new();
 
-function new(mailbox drvr_tx2sb, mailbox drvr_rx2sb, mailbox rcvr_tx2sb, mailbox drvr_rx2sb);
+function new(mailbox drvr_tx2sb, mailbox drvr_rx2sb, mailbox rcvr_tx2sb, mailbox rcvr_rx2sb);
   this.drvr_tx2sb = drvr_tx2sb;
   this.drvr_rx2sb = drvr_rx2sb;
   this.rcvr_tx2sb = rcvr_tx2sb;

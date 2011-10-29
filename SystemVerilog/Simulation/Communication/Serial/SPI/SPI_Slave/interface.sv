@@ -3,6 +3,8 @@
 `define GUARD_INTERFACE
 `include "globals.sv"
 
+//`timescale 1ps/1ps
+
 ////////////////////////////////////////////////////
 // Interface declaration for slave_spi core and  ///
 // slave host interface.						 ///
@@ -18,7 +20,8 @@ interface slave_host_interface(input bit clk);
   logic [data_width_c - 1:0]	fifo_din;		//FIFO - Output data
   
   //Outputs from SPI Slave
-  logic							busy;			//SPI Master is Busy - TX and RX data
+  logic							busy;			//SPI SLAVE is Busy - TX and RX data
+  logic 						timeout			//SPI SLAVE reached timeout
   logic	[data_width_c - 1:0]	dout;			//SPI Data Out (From SPI Slave)
   logic 						dout_valid;		//Output data is valid
   logic							interrupt;		//Transaction was interrupted
@@ -28,6 +31,11 @@ interface slave_host_interface(input bit clk);
 		output 	rst, fifo_din, fifo_din_valid, fifo_empty
 				);
 
+  modport DUT (
+		input clk, rst, fifo_din, fifo_din_valid, fifo_empty,
+		output fifo_req_data, busy, timeout, dout, dout_valid, interrupt 
+				);
+				
 endinterface
 
 ///////////////////////////////////////////////
@@ -38,18 +46,16 @@ interface slave_spi_interface(input bit clk);
   logic           						spi_mosi; 	//Input data from Master
   logic           						spi_miso; 	//Output data from Slave
   logic     						 	spi_ss;		///input from Master			
-
-  cloking cb@(posedge clk);
-     //#1 step is the minimum resolution.
-	 //In future test, it is possible to generate delay between SPI Master and Slave
-	 default input #1 output #1;
-     output		spi_clk;
-	 output    	spi_mosi;
-     input		spi_miso
-	 output    	spi_ss;
-  endcloking
   
-  modport SLAVE_SPI(cloking cb, input clk);
+  modport SLAVE_SPI (
+				input clk, spi_miso,
+				output spi_clk, spi_mosi, spi_ss
+				);
+
+  modport DUT (
+				input clk, spi_clk, spi_mosi, spi_ss,
+				output spi_miso
+				);
   
 endinterface
 
@@ -61,11 +67,15 @@ intrerface slave_config_interface (input bit clk);
   logic [reg_din_width_c - 1:0]		reg_din;	//Register's input data
   logic 							reg_din_val;//Register's data is valid
   logic								reg_ack;	//Register is acknowledged
-  logic								reg_err;	//Register write error
   
   modport SLAVE_CONFIG (
-		input clk, reg_ack, reg_err,
+		input clk, reg_ack,
 		output reg_din, reg_din_val
+		);
+		
+  modport DUT (
+		input clk, reg_din, reg_din_val,
+		output reg_ack
 		);
 		
 end interface

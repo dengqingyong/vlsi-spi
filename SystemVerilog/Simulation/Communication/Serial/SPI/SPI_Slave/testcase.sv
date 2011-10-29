@@ -2,21 +2,23 @@
 `define GUARD_TESTCASE
 `include "environemnt.sv"
 
+//`timescale 1ps/1ps
+
 program testcase(slave_host_interface.SLAVE_HOST host_intf, slave_spi_interface.SLAVE_SPI spi_intf, slave_config_interface.SLAVE_CONFIG conf_intf);
 
-Environment env;
+	Environment env;
 
-initial
-begin
-$display(" ******************* Start of testcase ****************");
-env = new(host_intf, spi_intf, conf_intf);
-$display(" ******************* Executing Testcase ***************");
-env.run();
-#1000;
-end
+	initial
+	begin
+		$display(" ******************* Start of testcase ****************");
+		env = new(host_intf, spi_intf, conf_intf);
+		$display(" ******************* Executing Testcase ***************");
+		env.run();
+		#1000;
+	end
 
-final
-$display(" ******************** End of testcase *****************");
+	final
+	$display(" ******************** End of testcase *****************");
 
 endprogram 
 
