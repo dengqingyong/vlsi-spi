@@ -3,6 +3,8 @@
 `include "globals.sv"
 `include "packet.sv"
 
+//`timescale 1ps/1ps
+
 class Receiver;	//Slave Host
 
 virtual slave_host_interface.SLAVE_HOST host_intf;
@@ -41,7 +43,8 @@ task tx();
 
 	i = 0;
 	pkt = new gpkt;	
-	
+	 
+	//repeat(10) @(posedge host_intf.clk);	//Wait for 10 clocks, before initializing transmission
 	 //// Randomize the packet /////
 	if ( pkt.randomize())
     begin
@@ -53,10 +56,10 @@ task tx();
 		
 		while (end_trans == 0)
 		begin
-			if (i < length) then //pkt has data to return
+			if (i < length) //pkt has data to return
 			begin
 				host_intf.fifo_empty	<=	0;
-				wait(host_intf.fifo_req_data == 1 or end_trans == 1);
+				wait(host_intf.fifo_req_data == 1 || end_trans == 1);
 				if (host_intf.fifo_req_data == 1)
 				begin
 					@(posedge host_intf.clk);
@@ -64,7 +67,6 @@ task tx();
 					host_intf.fifo_din			<=	pkt.data[i];
 					@(posedge host_intf.clk);
 					host_intf.fifo_din_valid	<=	0;
-					host_intf.fifo_din			<=	0;
 				end // if
 			end // if
 			else // FIFO has no data
@@ -72,7 +74,7 @@ task tx();
 				host_intf.fifo_empty	<=	1;
 				wait(end_trans == 1);
 			end // else
-			i	<=	i + 1;
+			i	=	i + 1;
 		end // while
 		
 		//// Push the packet in to mailbox for scoreboard /////
@@ -92,22 +94,26 @@ endtask : tx
 task rx();
 
 	packet pkt;
-	logic bytes[];
+	logic [data_width_c - 1:0] bytes[];
 
 	while (end_trans == 0)
 	begin
-		wait(host_intf.dout_valid == 1 or end_trans == 1);	//Wait for New Data
+		wait(host_intf.dout_valid == 1 || end_trans == 1);	//Wait for New Data
 		if (host_intf.dout_valid == 1)
 		begin
 			bytes = new[bytes.size + 1](bytes);
 			bytes[bytes.size - 1] = host_intf.dout;
 		end // if
-		wait(posedge host_intf.clk and host_intf.dout_valid == 0);
+		wait(host_intf.clk && host_intf.dout_valid == 0);
 	end // while
 	
 	/// Generate the packet and send it to the scoreboard  ///
 	pkt = new();
-	pkt.data = new[bytes.size](bytes);
+	pkt.data = new[bytes.size];
+	foreach(bytes[i])
+	begin
+		pkt.data[i] = bytes[i];
+	end // foreach
 	rcvr_rx2sb.put(pkt);	//Place in Scoreboard
 	$display(" %0d : Receiver : Finished receiving the packet with length %0d",$time,pkt.data.size); 
 	pkt.display();
@@ -120,3 +126,7 @@ task finish();
 begin
 	end_trans = 1;
 endtask : finish
+
+endclass
+
+`endif

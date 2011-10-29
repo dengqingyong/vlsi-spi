@@ -6,6 +6,8 @@
 `include "Receiver.sv"
 `include "Scoreboard.sv"
 
+//`timescale 1ps/1ps
+
 class Environment ;
 
 
@@ -50,19 +52,19 @@ endfunction : build
 task reset();
   $display(" %0d : Environemnt : start of reset() method",$time);
   // setting inputs to a default state
-  host_intf.fifo_din	<=	0;
+  host_intf.fifo_din		<=	'{default:0};
   host_intf.fifo_din_valid	<=	0;
-  host_intf.fifo_empty	<=	1;
-  spi_intf.cb.spi_clk	<=	cpol;
-  spi_intf.cb.spi_ss	<=	1;
-  spi_intf.cb.spi_mosi	<=	0;
-  conf_intf.reg_din	<=	0;
-  conf_intf.reg_din_val	<=	0;
+  host_intf.fifo_empty		<=	1;
+  spi_intf.cb.spi_clk		<=	cpol;
+  spi_intf.cb.spi_ss		<=	1;
+  spi_intf.cb.spi_mosi		<=	0;
+  conf_intf.reg_din			<=	'{default:0};
+  conf_intf.reg_din_val		<=	0;
   
   // RESET the DUT
-  host_intf.rst      <= 0;
-  repeat (4) @ host_intf.clk;
-  host_intf.rst      <= 1;
+  host_intf.rst      		<= 0;
+  repeat (4) @(host_intf.clk);
+  host_intf.rst      		<= 1;
   
   $display(" %0d : Environemnt : end of reset() method",$time);
   
@@ -77,11 +79,10 @@ task cfg_dut();
   conf_intf.reg_din_val		<= 1;
 
   @(posedge conf_intf.clk);
+  conf_intf.reg_din_val		<=  0;
   
-  conf_intf.reg_din 	<=	0;
-  conf_intf.reg_din_val	<=  0;
-  
-  reg_conf_assert: assert (!conf_intf.reg_ack or conf_intf.reg_err)
+  @(posedge conf_intf.clk);
+  reg_conf_assert: assert (!conf_intf.reg_ack)
   else
   begin
 	$error ("Acknowledge register was not detected, Time: %0t", $time);
@@ -107,7 +108,10 @@ task start();
 endtask : start
 
 task stop();
-	@(drvr.finish() == 1) // Finished driving the data from the master
+	bit finish = 0;
+	
+	drvr.finish(finish);
+	wait(finish == 1) // Finished driving the data from the master
 	rcvr.finish();
 	$display(" %0d : Environemnt : stop () method activated",$time);
 	

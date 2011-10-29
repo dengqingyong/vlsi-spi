@@ -2,9 +2,11 @@
 `define GUARD_COVERAGE
 `include "packet.sv"
 
+//`timescale 1ps/1ps
+
 class coverage;
 
-byte curr_data;
+logic [data_width_c - 1:0] curr_data;
 logic mode;
 logic [3:0] delay;
 
