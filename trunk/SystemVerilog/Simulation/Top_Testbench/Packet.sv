@@ -1,8 +1,6 @@
 `ifndef GUARD_PACKET
 `define GUARD_PACKET
 
-`define max_burst_c 20
-
 class Packet extends uvm_sequence_item;
 
 	parameter reset_polarity_g		=	0;		//RESET is active low
@@ -12,10 +10,13 @@ class Packet extends uvm_sequence_item;
 	parameter reg_addr_width_g		=	8;		//SPI Registers address width
 	parameter reg_din_width_g		=	8		//SPI Registers data width
 
-    randc bit [blen_width_g - 1 : 0] 	length;	//Burst Length
-    rand bit [data_width_g - 1:0] 		data[];	//Payload
+    randc bit [blen_width_g - 1 : 0] 	length;		//Burst Length
+    rand bit [data_width_g - 1:0] 		data[];		//Payload
+	randc logic [addr_width_g - 1 : 0] 	init_addr;	//Start burst from this address
+	rand bit							wr_rd;		//'0' - Read ; '1' - Write
+	
     
-    constraint payload_size_c { data.size inside { [1 : max_burst_c]};}
+    constraint payload_size_c { data.size inside { [1 : 2**addr_width_g]};}
     
     constraint length_c {  length == data.size; } 
     

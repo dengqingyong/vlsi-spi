@@ -49,7 +49,7 @@ interface spi_interface(input bit clk);
   logic     [bits_of_slaves_c - 1:0] 	spi_ss;		
   
   modport MASTER_SPI(
-				input 	clk, spi_clk, spi_mosi, spi_ss,
+				input 	spi_clk, spi_mosi, spi_ss,
 				output	spi_miso
 				);
   
