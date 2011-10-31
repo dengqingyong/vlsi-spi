@@ -15,7 +15,11 @@
 --					(*) x"02"	:	Read
 --
 --				Tag Cycle (WBS_TGC)
---					(*) '1'		:	Write to SPI Registers
+--					(*) '1'		:	Write to SPI Master Registers
+--					(*) '0'		:	Transmit / Receive using SPI
+
+--				Tag Data (WBS_TGD)
+--					(*) '1'		:	Write to SPI Slave Registers
 --					(*) '0'		:	Transmit / Receive using SPI
 ------------------------------------------------------------------------------------------------
 -- Revision:
@@ -52,7 +56,7 @@ entity wbs_spi is
 		wbs_stb_i				:	in std_logic;										--Input Strobe
 		wbs_we_i				:	in std_logic;										--Input Write Enable
 		wbs_adr_i				:	in std_logic_vector (addr_width_g - 1 downto 0);	--Input Address
-		wbs_tga_i				:	in std_logic_vector (blen_width_g - 1 downto 0);	--Burst Length
+		wbs_tga_i				:	in std_logic_vector (blen_width_g - 1 downto 0);	--Burst Length - 1
 		wbs_dat_i				:	in std_logic_vector (data_width_g - 1 downto 0);	--Input Data
 		wbs_tgc_i				:	in std_logic;										--'1' - Write to SPI Master Registers ; '0' - Transmit / recieve using SPI
 		wbs_tgd_i				:	in std_logic;										--'0' - Write / Read data to / from SPI Slave ; '1' - Write / Read registers to / from SPI Slave

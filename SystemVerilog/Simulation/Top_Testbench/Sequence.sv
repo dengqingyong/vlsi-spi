@@ -1,37 +1,40 @@
-// class Seq_wbm extends uvm_sequence #(Packet);
+`ifndef GUARD_SEQUENCE
+`define GUARD_SEQUENCE
 
-     // function new(string name = "Seq_wbm");
-         // super.new(name);
-     // endfunction : new
- 
-     // Packet item;
- 
-     // `uvm_sequence_utils(Seq_wbm, Sequencer)    
+class Seq_wbm extends uvm_sequence #(Packet);
 
-     // virtual task body();
-        // // forever begin
-         // // `uvm_do_with(item, {da == p_sequencer.cfg.device_add[0];} ); 
-         // // `uvm_do_with(item, {da == p_sequencer.cfg.device_add[1];} ); 
-        // // end
-     // endtask : body
-  
-// endclass : Seq_wbm
-
-class Seq_constant_length extends uvm_sequence #(Packet);
-
-     function new(string name = "Seq_constant_length");
+     function new(string name = "Seq_wbm");
          super.new(name);
      endfunction : new
  
      Packet item;
  
-     `uvm_sequence_utils(Seq_constant_length, Sequencer)    
+     `uvm_sequence_utils(Seq_wbm, Sequencer)    
 
      virtual task body();
         forever begin
-         `uvm_do_with(item, {length == 10;} ); 
+         `uvm_do_with(item, { init_addr + data.size < 2**addr_width_g; } ); 
         end
      endtask : body
   
-endclass : Seq_constant_length
+endclass : Seq_wbm
 
+class Seq_max_wr_burst extends uvm_sequence #(Packet);
+
+     function new(string name = "Seq_max_wr_burst");
+         super.new(name);
+     endfunction : new
+ 
+     Packet item;
+ 
+     `uvm_sequence_utils(Seq_max_wr_burst, Sequencer)    
+
+     virtual task body();
+        forever begin
+         `uvm_do_with(item, {length == '{default:1}; wr_rd == 1;} ); 
+        end
+     endtask : body
+  
+endclass : Seq_max_wr_burst
+
+`endif

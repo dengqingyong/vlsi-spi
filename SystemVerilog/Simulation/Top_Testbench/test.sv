@@ -1,3 +1,6 @@
+`ifndef GUARD_TEST
+`define GUARD_TEST
+
 class test1 extends uvm_test;
 
     `uvm_component_utils(test1)
@@ -14,8 +17,8 @@ class test1 extends uvm_test;
         super.build();
 
         set_config_object("t_env.*","Configuration",cfg);
-        set_config_string("*.Seqncr", "default_sequence", "Seq_wbm");
-        set_config_int("*.Seqncr", "count",1);
+        set_config_string("*.Seqncr", "default_sequence", "Seq_max_wr_burst");
+        set_config_int("*.Seqncr", "count",1);	//Number of transactions
     endfunction
 
     virtual task run ();
@@ -25,3 +28,5 @@ class test1 extends uvm_test;
     endtask : run
 
 endclass : test1
+
+`endif

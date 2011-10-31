@@ -23,9 +23,6 @@ class Driver extends uvm_driver #(Packet);
    
     function new( string name = "" , uvm_component parent = null) ;
         super.new( name , parent );
-		assert (int_ram.randomize())
-		else
-			uvm_report_error(get_full_name(),"Cannot randomize Internal RAM ",UVM_LOW, `__FILE__, `__LINE__);
     endfunction : new
    
     virtual function void build();
@@ -44,16 +41,33 @@ class Driver extends uvm_driver #(Packet);
 
     virtual task run();
         Packet pkt;
-		logic [addr_width_g - 1 : 0] init_addr = 0;
-		//TODO: Change init address
-        @(posedge wbm_intf.clk);
+		int idx;
+		//Prepare random RAM data
+		assert (int_ram.randomize())
+		else
+			uvm_report_error(get_full_name(),"Cannot randomize Internal RAM ",UVM_LOW, `__FILE__, `__LINE__);
+        //Prepare system
+		@(posedge wbm_intf.clk);
         reset_dut();
         cfg_dut();
-        forever begin
+		assert (pkt.randomize())
+		else
+			uvm_report_error(get_full_name(),"Cannot randomize first packet ",UVM_LOW, `__FILE__, `__LINE__);
+        //Driving packets according to sequencer
+		forever begin
             seq_item_port.get_next_item(pkt);
-            Drvr2Sb_port.write(pkt);
             @(posedge wbm_intf.clk);
-            drive(pkt, init_addr);
+            if (pkt.wr_rd)	//Write Burst
+			begin
+				for (idx = pkt.init_addr ; idx <= pkt.length && idx < 2**addr_width_g ; idx++)
+					int_ram [idx] = pkt.data [idx];	//Write transmitted data to RAM
+				drive(pkt);
+			else begin		//Read Burst
+				for (idx = pkt.init_addr ; idx <= pkt.length && idx < 2**addr_width_g ; idx++)
+					pkt.data [idx] = int_ram [idx];	//Prepare golden packet, from RAM
+				Drvr2Sb_port.write(pkt);
+				recieve (pkt.init_addr, pkt.length - 1);
+			end
             @(posedge wbm_intf.clk);
             seq_item_port.item_done();
         end
@@ -162,12 +176,11 @@ class Driver extends uvm_driver #(Packet);
     endtask : cfg_dut
    
     virtual task drive	(
-						Packet 							pkt,		//Driven packet
-						logic [addr_width_g - 1 : 0] 	init_addr	//Initial address
+						Packet pkt		//Driven packet
 						);
         logic [data_width_g - 1 : 0]  	bytes[];
         int 							pkt_len;
-		logic [addr_width_g - 1 : 0] 	addr = init_addr;
+		logic [addr_width_g - 1 : 0] 	addr = pkt.init_addr;
         pkt_len = pkt.pack_bytes(bytes);
         uvm_report_info(get_full_name(),"Driving packet ...",UVM_LOW);
 		wbm_intf.wbm_tgc_o	<=	0;	//Write SPI Data
