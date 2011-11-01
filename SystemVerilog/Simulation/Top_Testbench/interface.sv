@@ -13,7 +13,7 @@ interface wbm_interface(input bit clock);
 	parameter blen_width_g			=	9;		//Burst length width (maximum 2^9=512Kbyte Burst)
 	parameter addr_width_g			=	10;		//Address width
 	parameter reg_addr_width_g		=	8;		//SPI Registers address width
-	parameter reg_din_width_g		=	8		//SPI Registers data width
+	parameter reg_din_width_g		=	8;		//SPI Registers data width
 
 	//Reset								
 	logic rst					;				//Reset (Synchronous at deactivation, asynchronous in activation ==> cannot be Wishbone Reset)

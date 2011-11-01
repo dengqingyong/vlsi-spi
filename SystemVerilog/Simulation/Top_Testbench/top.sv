@@ -4,7 +4,7 @@
 // Importing UVM Packages                          //
 /////////////////////////////////////////////////////
 
- `include "uvm.svh"
+`include "uvm.sv"
 import uvm_pkg::* ;
 
 module top();

@@ -8,7 +8,7 @@ class Packet extends uvm_sequence_item;
 	parameter blen_width_g			=	9;		//Burst length width (maximum 2^9=512Kbyte Burst)
 	parameter addr_width_g			=	10;		//Address width
 	parameter reg_addr_width_g		=	8;		//SPI Registers address width
-	parameter reg_din_width_g		=	8		//SPI Registers data width
+	parameter reg_din_width_g		=	8;		//SPI Registers data width
 
     randc bit [blen_width_g - 1 : 0] 	length;		//Burst Length
     rand bit [data_width_g - 1:0] 		data[];		//Payload

@@ -1,7 +1,6 @@
 `ifndef GUARD_CONFIGURATION
 `define GUARD_CONFIGURATION
 
-
 class Configuration extends uvm_object;
 
     virtual wbm_interface.WBM   wbm_intf;
