@@ -1,5 +1,6 @@
 `ifndef GUARD_DRIVER
 `define GUARD_DRIVER
+`include "Internal_Ram.sv"
 
 class Driver extends uvm_driver #(Packet);
 
@@ -8,11 +9,11 @@ class Driver extends uvm_driver #(Packet);
 	parameter blen_width_g			=	9;		//Burst length width (maximum 2^9=512Kbyte Burst)
 	parameter addr_width_g			=	10;		//Address width
 	parameter reg_addr_width_g		=	8;		//SPI Registers address width
-	parameter reg_din_width_g		=	8		//SPI Registers data width
+	parameter reg_din_width_g		=	8;		//SPI Registers data width
 
     Configuration cfg;
 	
-	rand logic [data_width_g - 1 : 0] int_ram [addr_width_g - 1 : 0];	//Internal RAM
+	Internal_Ram int_ram;
    
     virtual wbm_interface.WBM   wbm_intf;
     
@@ -60,11 +61,12 @@ class Driver extends uvm_driver #(Packet);
             if (pkt.wr_rd)	//Write Burst
 			begin
 				for (idx = pkt.init_addr ; idx <= pkt.length && idx < 2**addr_width_g ; idx++)
-					int_ram [idx] = pkt.data [idx];	//Write transmitted data to RAM
+					int_ram.ram [idx] = pkt.data [idx];	//Write transmitted data to RAM
 				drive(pkt);
+			end
 			else begin		//Read Burst
 				for (idx = pkt.init_addr ; idx <= pkt.length && idx < 2**addr_width_g ; idx++)
-					pkt.data [idx] = int_ram [idx];	//Prepare golden packet, from RAM
+					pkt.data [idx] = int_ram.ram [idx];	//Prepare golden packet, from RAM
 				Drvr2Sb_port.write(pkt);
 				recieve (pkt.init_addr, pkt.length - 1);
 			end
@@ -94,8 +96,8 @@ class Driver extends uvm_driver #(Packet);
     endtask : reset_dut
    
     virtual task cfg_dut(
-							logic [reg_din_width_g - 1:0] clk_div_reg,	//Clock divide factor
-							logic [reg_din_width_g - 1:0] cphapol_reg,	//CPOL, CPHA value
+							logic [reg_din_width_g - 1:0] clk_div_reg = 2,	//Clock divide factor
+							logic [reg_din_width_g - 1:0] cphapol_reg = 0,	//CPOL, CPHA value
 							string who_config = "both"					//Who to config: "master", "slave", "both"
 						);
         uvm_report_info(get_full_name(),"Start of cfg_dut method ",UVM_LOW);
@@ -181,7 +183,7 @@ class Driver extends uvm_driver #(Packet);
         logic [data_width_g - 1 : 0]  	bytes[];
         int 							pkt_len;
 		logic [addr_width_g - 1 : 0] 	addr = pkt.init_addr;
-        pkt_len = pkt.pack_bytes(bytes);
+        pkt_len = pkt.length;
         uvm_report_info(get_full_name(),"Driving packet ...",UVM_LOW);
 		wbm_intf.wbm_tgc_o	<=	0;	//Write SPI Data
 		wbm_intf.wbm_tga_o	<=	pkt_len - 1;
@@ -207,7 +209,7 @@ class Driver extends uvm_driver #(Packet);
    endtask : drive
 
     virtual task recieve	(
-							logic [addr_width_g - 1 : 0] 	init_addr	//Initial address
+							logic [addr_width_g - 1 : 0] 	init_addr,	//Initial address
 							logic [blen_width_g - 1 : 0] 	burst_len	//Burst length - 1
 							);
         Packet pkt;
@@ -221,13 +223,13 @@ class Driver extends uvm_driver #(Packet);
 		//Init Transaction
 		wbm_intf.wbm_cyc_o	<=	1;
 		wbm_intf.wbm_stb_o	<=	1;
-        for (int idx = 0 ; idx <= burst_len ; i++)
+        for (int idx = 0 ; idx <= burst_len ; idx++)
 		begin
 			wbm_intf.wbm_adr_o	<=	addr;
 			if (wbm_intf.wbm_stall_i) 				//STALL is activated
 				@(negedge wbm_intf.wbm_stall_i);	//Wait until SPI Master is Ready
 			@(posedge wbm_intf.clk);
-			bytes[idx]	<=	wbm_intf.wbm_dat_i;
+			bytes[idx]	=	wbm_intf.wbm_dat_i;
 			addr++;
 		end
 		wbm_intf.wbm_stb_o	<=	0;
@@ -236,7 +238,10 @@ class Driver extends uvm_driver #(Packet);
 		@(posedge wbm_intf.clk);
 		//TODO: Add assertion for WBM_ERR, and WBM_ACK timing
 		pkt = new();
-		void'(pkt.unpack_bytes(bytes));
+        pkt.data.delete();
+        pkt.data = new[burst_len + 1];
+        foreach(bytes[i])
+          pkt.data[i] = bytes[i];
 		Rcvr2Sb_port.write(pkt);
    endtask : recieve
 
