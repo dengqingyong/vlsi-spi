@@ -12,7 +12,7 @@ virtual slave_spi_interface.SLAVE_SPI  spi_intf;
 mailbox drvr_tx2sb;	//Transmitted data
 mailbox drvr_rx2sb;	//Received data
 event end_burst;
-bit end_trans // 0 - Transmittion is ACTIVE
+bit end_trans; // 0 - Transmittion is ACTIVE
 			  // 1 - Transmittion is FINISHED
 packet gpkt;
 master_bfm spi_master;
@@ -77,8 +77,9 @@ task start();
 		rec_pkt.display();
 		rec_data.delete();
 	   
-	   repeat(5) @(posedge spi_intf.clk);	//To ensure that last dout_valid from SPI Slave has been asserted
+	   repeat (5) @(posedge spi_intf.clk);	//To ensure that last dout_valid from SPI Slave has been asserted
 	   ->end_burst;
+	   $display (" %0d Driver : Activated event end_burst",$time);
        
      end // randomize successfull
    else
@@ -92,9 +93,10 @@ endtask : start
 
 /// Method to de-activate the driver and the receiver ///
 task finish(ref bit drvr_finish);
-	@(end_burst)
+	@(end_burst);
 	end_trans = 1;
 	drvr_finish = 1;
+	$display (" %0d Driver : Activated test finish process",$time);
 endtask : finish
 
 endclass

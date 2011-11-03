@@ -1,4 +1,3 @@
-
 `ifndef GUARD_INTERFACE
 `define GUARD_INTERFACE
 `include "globals.sv"
@@ -21,7 +20,7 @@ interface slave_host_interface(input bit clk);
   
   //Outputs from SPI Slave
   logic							busy;			//SPI SLAVE is Busy - TX and RX data
-  logic 						timeout			//SPI SLAVE reached timeout
+  logic 						timeout;		//SPI SLAVE reached timeout
   logic	[data_width_c - 1:0]	dout;			//SPI Data Out (From SPI Slave)
   logic 						dout_valid;		//Output data is valid
   logic							interrupt;		//Transaction was interrupted
@@ -63,7 +62,7 @@ endinterface
 // Interface for the slave configuration Interface. //
 //////////////////////////////////////////////////////
 
-intrerface slave_config_interface (input bit clk);
+interface slave_config_interface (input bit clk);
   logic [reg_din_width_c - 1:0]		reg_din;	//Register's input data
   logic 							reg_din_val;//Register's data is valid
   logic								reg_ack;	//Register is acknowledged
@@ -78,7 +77,7 @@ intrerface slave_config_interface (input bit clk);
 		output reg_ack
 		);
 		
-end interface
+endinterface
 
 ///////////////////////////////////////////////////
 

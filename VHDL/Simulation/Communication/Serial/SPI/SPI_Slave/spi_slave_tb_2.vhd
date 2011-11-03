@@ -167,7 +167,7 @@ begin
 		wait until rising_edge(spi_ss);
 		spi_clk	<=	'1';
 		wait until falling_edge(spi_ss);
-		wait for 100 ns;
+		wait for 90 ns;
 		for i in 0 to 20 loop
 			spi_clk	<=	not spi_clk;	-- SCK freq is 5 MHz
 			wait for 100 ns;

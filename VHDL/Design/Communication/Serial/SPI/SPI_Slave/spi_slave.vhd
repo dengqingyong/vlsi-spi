@@ -1,3 +1,4 @@
+
 ------------------------------------------------------------------------------------------------
 -- Entity Name 	:	SPI Slave
 -- File Name	:	spi_slave.vhd
@@ -20,6 +21,7 @@
 --	 	(*)	Reset deactivation MUST be synchronized to the clock's rising edge!
 --			Reset activetion may be asynchronized to the clock.
 --		(*) FIFO should assert FIFO_DIN_VALID within one clock from FIFO_REQ_DATA.
+--		(*) MAXIMUM SPI_CLK FREQUENCY supported by the spi_slave is SYS_CLK/4 
 ------------------------------------------------------------------------------------------------
 -- Revision:
 --			Number		Date		Name					Description			
@@ -29,6 +31,9 @@
 --															(3) Changed : Configuration Registers handling - 
 --																registers write can be done at any time.
 --															(4) Bug fixing [1]: Multiple transmitions when CPHA = 0
+--			1.2			1.11.2011	Omer Shaked				(1) Merge two fsm processes to one SYNCHRONIC process
+--															(2) Bug fixing [2]: Change samp_en, prop_en to support max spi_clk freq.
+--															(3) Bug fixing [3]: spi_miso & busy ports values during reset.
 --
 -- Fixed bugs Description:
 -- =======================
@@ -38,6 +43,12 @@
 --     Therefore, if transmition was actually terminated (No burst - SS de-asserted), we need to SHIFT-BACK the 
 --	   output shift register, in order to have the correct data received from the FIFO ready for the next
 --	   transaction.
+-- [2] The two indicators for sample and propogation of data - prop_en and samp_en, were changed from being signals
+--	   to be variables inside the sr_proc, in order to save 1 CC delay due to inter-process signal value transfer.
+--	   Therefore, the fix enabled the slave to work with spi_clk = sys_clk/4.
+-- [3] Added RESET handling for two signals : spi_miso and busy.
+--	   spi_miso - maintain HIGH_Z value while reset is active.
+--	   busy - maintain '0' value while reset is active.
 ------------------------------------------------------------------------------------------------
 --	Todo:
 --			(1) 
@@ -111,7 +122,6 @@ architecture rtl_spi_slave of spi_slave is
 	---------------------		Signals			-----------------------
 	--General Signals
 	signal cur_st		:		spi_slave_states;								--FSM Current State
-	signal next_st		:		spi_slave_states;								--FSM next state
 	signal spi_sr_out	:		std_logic_vector (data_width_g - 1 downto 0);	--Shift Register (Output)
 	signal sr_out_data	:		std_logic;										--Output Shift Register data: '0' - default data, '1' - fifo_data  
 	signal spi_sr_in	:		std_logic_vector (data_width_g - 1 downto 0);	--Shift Register (Input)
@@ -134,17 +144,14 @@ architecture rtl_spi_slave of spi_slave is
 	-- * Bit 1	-	CPOL
 	signal cpha			:		std_logic; -- spi protocol CPHA value - isn't updated during transaction!
 	signal cpol			:		std_logic; -- spi protocol CPOL value - isn't updated during transaction!
-	
-	--Sample and Propagate Signals
-	signal samp_en		:		std_logic;										--Sample data
-	signal prop_en		:		std_logic;										--Propagate Data
+
 
 begin
 
 	-------------------------		Hidden Processes	----------------------
 	
 	busy_proc:
-	busy	<= '0' when (spi_ss_in /= ss_polarity_g)
+	busy	<= '0' when (spi_ss_in /= ss_polarity_g) or (rst = reset_polarity_g)
 				else '1';
 
 	interrupt_proc:
@@ -158,7 +165,7 @@ begin
 	spi_clk_i	<=	spi_clk;
 	
 	spi_miso_en_proc:
-	spi_miso	<=	spi_miso_i when (spi_ss_in = ss_polarity_g)
+	spi_miso	<=	spi_miso_i when (spi_ss_in = ss_polarity_g) and (rst /= reset_polarity_g)
 							   else 'Z';
 	
 	--------------------------------------------------------------------------
@@ -166,93 +173,87 @@ begin
 	--------------------------------------------------------------------------
 	-- This process is the main FSM process.
 	--------------------------------------------------------------------------
-	fsm_state_reg_proc: process (clk,rst)
+	fsm_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then
-			cur_st			<=	idle_st;	
-			
-		elsif rising_edge(clk) then
-			cur_st			<=	next_st;
-		end if;
-	end process fsm_state_reg_proc;
-	
-	fsm_proc: process (cur_st, spi_ss_in, fifo_empty, fifo_din_valid, sr_out_data, fifo_req_sr(0), sr_cnt_out, sr_cnt_in)
-	begin
-		
-		case cur_st is
+			cur_st			<=	idle_st;
+
+        elsif rising_edge(clk) then
+		  case cur_st is
 			when idle_st	=>
 				if (spi_ss_in = ss_polarity_g) then
-					next_st	<=	data_st;
+					cur_st	<=	data_st;
 				elsif (fifo_empty = '0') then
-					next_st	<=	fifo_load_st;
+					cur_st	<=	fifo_load_st;
 				else
-					next_st <=	idle_st;
+					cur_st <=	idle_st;
 				end if;
 			
 			when fifo_load_st	=>
 				if (fifo_din_valid = '0') then
 					if (fifo_req_sr (0) = '1')	then --ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
-						next_st	<= idle_st;
+						cur_st	<= idle_st;
 						report "Time: " & time'image(now) & ", SPI Slave >> Expecting FIFO_DIN_VALID = '1' but it is '0'" & LF
 						& "Aborting Transmission"
 						severity error;
 					else -- FIFO data is not ready yet
-						next_st	<=	fifo_load_st;
+						cur_st	<=	fifo_load_st;
 					end if;
 				else -- fifo_din_valid = '1'
 					if (spi_ss_in = ss_polarity_g) then
-						next_st	<=	data_st;
+						cur_st	<=	data_st;
 					else
-						next_st	<=	ready_st;
+						cur_st	<=	ready_st;
 					end if;
 				end if;
 				
 			when ready_st	=>
 				if (spi_ss_in = ss_polarity_g) then
-					next_st	<=	data_st;
+					cur_st	<=	data_st;
 				else
-					next_st	<=	ready_st;
+					cur_st	<=	ready_st;
 				end if;
 				
 			when data_st	=>
 				if (fifo_din_valid = '0') and (fifo_req_sr (0) = '1')	then --ERROR: Expecting FIFO_DIN_VALID = '1', but it is '0'
-					next_st	<= idle_st;
+					cur_st	<= idle_st;
 					report "Time: " & time'image(now) & ", SPI Slave >> Expecting FIFO_DIN_VALID = '1' but it is '0'" & LF
 					& "Aborting Transmission"
 					severity error;
 				elsif (spi_ss_in /= ss_polarity_g) then -- Slave select NOT active
 					if (cpha = '0') and (sr_cnt_out > 1) then
-						next_st	<=	break_st;
+						cur_st	<=	break_st;
 					elsif (cpha = '0') and (sr_cnt_in /= 0) then
-						next_st	<=	break_st;
+						cur_st	<=	break_st;
 					elsif (cpha = '1') and (sr_cnt_out /= 0) then
-						next_st	<=	break_st;
+						cur_st	<=	break_st;
 					elsif (cpha = '1') and (sr_cnt_in /= 0) then
-						next_st	<=	break_st;
+						cur_st	<=	break_st;
 					else -- Slave Select was De-activated before the start of a new transaction
 						if (sr_out_data = '0') then -- Default data
-							next_st	<=	idle_st;
+							cur_st	<=	idle_st;
 						else -- FIFO data
-							next_st	<=	ready_st;
+							cur_st	<=	ready_st;
 						end if;
 					end if;
 				else -- Slave Select is ACTIVE
-					next_st	<=	data_st;
+					cur_st	<=	data_st;
 				end if;
 					
 			when break_st	=>
 				if (spi_ss_in = ss_polarity_g) then
-					next_st	<=	data_st;
+					cur_st	<=	data_st;
 				else
-					next_st	<=	idle_st;
+					cur_st	<=	idle_st;
 				end if;
 		
 			when others	=>
-				next_st	<=	idle_st;
+				cur_st	<=	idle_st;
 				report "Time: " & time'image(now) & ", SPI Slave >> Unknown state in FSM!!!"
 				severity error;
 			
-		end case;
+		  end case;
+        end if;
 	end process fsm_proc;	
 	
 	
@@ -277,72 +278,15 @@ begin
 	
 	
 	--------------------------------------------------------------------------
-	--------------------------	prop_en_proc process -------------------------
-	--------------------------------------------------------------------------
-	-- This process asserts / negates Data Propagation Enable signal,
-	-- according to CPOL, CPHA and SPI_CLK.
-	-- When PROP_EN = '1', then data will be propagated to the SPI Master.
-	--------------------------------------------------------------------------
-	prop_en_proc: process (clk, rst)
-	begin
-		if (rst = reset_polarity_g) then
-			prop_en 	<= '0';
-		
-		elsif rising_edge (clk) then
-			if (spi_ss_in = ss_polarity_g) then 
-				if ((cpol = '0') and (cpha = '0') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '0', CPHA = '0' and falling edge at SPI_CLK
-				or ((cpol = '0') and (cpha = '1') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '0', CPHA = '1' and rising edge at SPI_CLK
-				or ((cpol = '1') and (cpha = '0') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '1', CPHA = '0' and rising edge at SPI_CLK
-				or ((cpol = '1') and (cpha = '1') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '1', CPHA = '1' and falling edge at SPI_CLK
-				then	
-					prop_en	<= '1';
-				else
-					prop_en	<= '0';
-				end if;
-			else
-				prop_en		<= '0';
-			end if;
-		end if;
-	end process prop_en_proc;
-
-	--------------------------------------------------------------------------
-	--------------------------	samp_en_proc process -------------------------
-	--------------------------------------------------------------------------
-	-- This process asserts / negates Data Sample Enable signal, according to
-	-- CPOL, CPHA and SPI_CLK.
-	-- When SAMP_EN = '1', then data will be sampled from the SPI Master.
-	--------------------------------------------------------------------------
-	samp_en_proc: process (clk, rst)
-	begin
-		if (rst = reset_polarity_g) then
-			samp_en 	<= '0';
-		
-		elsif rising_edge (clk) then
-			if (spi_ss_in = ss_polarity_g) then 
-				if ((cpol = '0') and (cpha = '0') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '0', CPHA = '0' and rising edge at SPI_CLK (='0' since it will be '1' after spi_event)
-				or ((cpol = '0') and (cpha = '1') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '0', CPHA = '1' and falling edge at SPI_CLK (='1' since it will be '0' after spi_event)
-				or ((cpol = '1') and (cpha = '0') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '1', CPHA = '0' and falling edge at SPI_CLK (='1' since it will be '0' after spi_event)
-				or ((cpol = '1') and (cpha = '1') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '1', CPHA = '1' and rising edge at SPI_CLK (='0' since it will be '1' after spi_event)
-				then	
-					samp_en	<= '1';
-				else
-					samp_en	<= '0';
-				end if;
-			else
-				samp_en		<= '0';
-			end if;
-		end if;
-	end process samp_en_proc;
-	
-	
-	--------------------------------------------------------------------------
 	--------------------------	spi_sr_proc process	--------------------------
 	--------------------------------------------------------------------------
 	-- This process handles with the input / output Shift Registers, as well
 	-- as the SPI_MISO, which is fed from the output Shift Register.
 	--------------------------------------------------------------------------
 	spi_sr_proc: process (clk, rst)
-	variable default_data	:	std_logic_vector (data_width_g - 1 downto 0)	:=	(others => '0');
+		variable default_data	:		std_logic_vector (data_width_g - 1 downto 0)	:=	(others => '0');
+        variable samp_en        :       std_logic	:= '0';
+        variable prop_en        :       std_logic	:= '0';
 	begin
 		if (rst = reset_polarity_g) then
 			spi_sr_out		<=	(others => '0');
@@ -351,11 +295,14 @@ begin
 			spi_miso_i		<=	dval_miso_g; --Default spi_miso value
 			sr_cnt_out		<=	0;
 			sr_cnt_in		<=	0;
-		
+			prop_en			:= '0';
+			samp_en 		:= '0';
 		elsif rising_edge (clk) then			
 			case cur_st is
 			
 				when idle_st	=>	
+					prop_en			:= '0';
+					samp_en 		:= '0';
 					spi_miso_i	<=	dval_miso_g;
 					if (spi_ss_in = ss_polarity_g) then -- start of transaction and FIFO data is NOT ready
 						if (cpha = '0') then -- need to propogate first bit of Tx data
@@ -380,6 +327,8 @@ begin
 					end if;
 				
 				when fifo_load_st	=>
+					prop_en			:= '0';
+					samp_en 		:= '0';
 					spi_miso_i	<=	dval_miso_g;
 					if (fifo_din_valid = '1') then
 						if (spi_ss_in /= ss_polarity_g) then
@@ -409,6 +358,8 @@ begin
 					end if;
 					
 				when ready_st	=>
+					prop_en			:= '0';
+					samp_en 		:= '0';
 					spi_miso_i	<=	dval_miso_g;
 					if (spi_ss_in = ss_polarity_g) then
 						if (cpha = '0') then -- need to propogate first bit of Tx data
@@ -429,6 +380,8 @@ begin
 					end if;
 			
 				when break_st	=>
+					prop_en			:= '0';
+					samp_en 		:= '0';
 					spi_miso_i	<=	dval_miso_g;
 					if (spi_ss_in = ss_polarity_g) then
 						if (cpha = '0') then -- need to propogate first bit of Tx data
@@ -453,6 +406,27 @@ begin
 					end if;
 
 				when data_st	=>
+					-- When PROP_EN = '1', then data will be propagated to the SPI Master.
+					if ((cpol = '0') and (cpha = '0') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '0', CPHA = '0' and falling edge at SPI_CLK
+					or ((cpol = '0') and (cpha = '1') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '0', CPHA = '1' and rising edge at SPI_CLK
+                    or ((cpol = '1') and (cpha = '0') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '1', CPHA = '0' and rising edge at SPI_CLK
+                    or ((cpol = '1') and (cpha = '1') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '1', CPHA = '1' and falling edge at SPI_CLK
+                    then	
+						prop_en	:= '1';
+                    else                
+						prop_en	:= '0';
+                    end if;
+					-- When SAMP_EN = '1', then data will be sampled from the SPI Master.
+                    if ((cpol = '0') and (cpha = '0') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '0', CPHA = '0' and rising edge at SPI_CLK (='0' since it will be '1' after spi_event)
+                    or ((cpol = '0') and (cpha = '1') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '0', CPHA = '1' and falling edge at SPI_CLK (='1' since it will be '0' after spi_event)
+                    or ((cpol = '1') and (cpha = '0') and (spi_clk_reg = '1') and (spi_clk_i = '0'))		--CPOL = '1', CPHA = '0' and falling edge at SPI_CLK (='1' since it will be '0' after spi_event)
+                    or ((cpol = '1') and (cpha = '1') and (spi_clk_reg = '0') and (spi_clk_i = '1'))		--CPOL = '1', CPHA = '1' and rising edge at SPI_CLK (='0' since it will be '1' after spi_event)
+                    then	
+						samp_en	:= '1';
+                    else                
+						samp_en	:= '0';
+					end if;
+                                  
 					if (spi_ss_in /= ss_polarity_g) then -- Slave select NOT active
 						spi_miso_i	<=	dval_miso_g;
 						if (cpha = '0') and (sr_cnt_out = 1) then -- Shift-BACK the data of out_sr
@@ -506,6 +480,8 @@ begin
 					
 				when others		=>
 					spi_miso_i	<=	dval_miso_g;
+					prop_en			:= '0';
+					samp_en 		:= '0';
 				
 			end case;
 		end if;

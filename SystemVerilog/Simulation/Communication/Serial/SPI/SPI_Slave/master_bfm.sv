@@ -23,26 +23,26 @@ task start (logic [data_width_c - 1:0] data, logic burst_mode, logic [3:0] delay
 	spi_intf.spi_clk	<=	cpol;
 	spi_intf.spi_ss		<=	0;
 	fork
-		repeat(16) #(10 * spi_freq) spi_intf.spi_clk = ~spi_intf.spi_clk;
+		repeat(16) #(20 * spi_freq) spi_intf.spi_clk = ~spi_intf.spi_clk;
 		if (cpha == 0)
 		begin
 			for (int i = 0; i < 8; i++)
 			begin
 				spi_intf.spi_mosi	<=	data[i];
-				#(10 * spi_freq); // wait for half spi_clk cycle
-				rec_data[i]	<=	spi_intf.spi_miso;
-				#(10 * spi_freq); // wait for half spi_clk cycle
+				#(20 * spi_freq); // wait for half spi_clk cycle
+				rec_data[i]	=	spi_intf.spi_miso;
+				#(20 * spi_freq); // wait for half spi_clk cycle
 			end // for
 		end // if
 		else  // cpha = 1
 		begin
-			#(10 * spi_freq); // wait for half spi_clk cycle
+			#(20 * spi_freq); // wait for half spi_clk cycle
 			for (int i = 0; i < 8; i++)
 			begin
 				spi_intf.spi_mosi	<=	data[i];
-				#(10 * spi_freq); // wait for half spi_clk cycle
-				rec_data[i]	<=	spi_intf.spi_miso;
-				#(10 * spi_freq); // wait for half spi_clk cycle
+				#(20 * spi_freq); // wait for half spi_clk cycle
+				rec_data[i]	=	spi_intf.spi_miso;
+				#(20 * spi_freq); // wait for half spi_clk cycle
 			end // for
 		end // else
 	join
@@ -63,7 +63,7 @@ endtask : start
 /// Master SPI closing transmition method ///
 task finish();
 			
-	@(posedge host_intf.clk);
+	@(posedge spi_intf.clk);
 	spi_intf.spi_ss		<=	1;
 
 endtask : finish

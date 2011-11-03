@@ -1,6 +1,6 @@
 `ifndef GUARD_TESTCASE
 `define GUARD_TESTCASE
-`include "environemnt.sv"
+`include "environment.sv"
 
 //`timescale 1ps/1ps
 
