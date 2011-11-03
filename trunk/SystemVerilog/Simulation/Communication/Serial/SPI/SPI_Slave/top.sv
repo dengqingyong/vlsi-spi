@@ -5,6 +5,12 @@
 
 module top();
 
+initial begin
+
+        $vcdpluson();
+
+end
+
 /////////////////////////////////////////////////////
 // clk Declaration and Generation                //
 /////////////////////////////////////////////////////
@@ -43,23 +49,23 @@ testcase TC1 (host_intf, spi_intf, conf_intf);
 /////////////////////////////////////////////////////
 
 spi_slave DUT (.clk(clk),
-               .rst(host_intf.DUT.rst),
-               .fifo_req_data(host_intf.DUT.fifo_req_data),
-               .fifo_din(host_intf.DUT.fifo_din),
-               .fifo_din_valid(host_intf.DUT.fifo_din_valid),
-               .fifo_empty(host_intf.DUT.fifo_empty),
-               .reg_din(conf_intf.DUT.reg_din),
-               .reg_din_val(conf_intf.DUT.reg_din_val),
-               .reg_ack(conf_intf.DUT.reg_ack),
-			   .timeout(host_intf.DUT.timeout),
-               .busy(host_intf.DUT.busy),
-			   .interrupt(host_intf.DUT.interrupt),
-               .dout(host_intf.DUT.dout),
-               .dout_valid(host_intf.DUT.dout_valid),
-               .spi_clk(spi_intf.DUT.spi_clk),
-               .spi_mosi(spi_intf.DUT.spi_mosi),
-               .spi_miso(spi_intf.DUT.spi_miso),
-               .spi_ss(spi_intf.DUT.spi_ss));
+               .rst(host_intf.rst),
+               .fifo_req_data(host_intf.fifo_req_data),
+               .fifo_din(host_intf.fifo_din),
+               .fifo_din_valid(host_intf.fifo_din_valid),
+               .fifo_empty(host_intf.fifo_empty),
+               .reg_din(conf_intf.reg_din),
+               .reg_din_val(conf_intf.reg_din_val),
+               .reg_ack(conf_intf.reg_ack),
+			   .timeout(host_intf.timeout),
+               .busy(host_intf.busy),
+			   .interrupt(host_intf.interrupt),
+               .dout(host_intf.dout),
+               .dout_valid(host_intf.dout_valid),
+               .spi_clk(spi_intf.spi_clk),
+               .spi_mosi(spi_intf.spi_mosi),
+               .spi_miso(spi_intf.spi_miso),
+               .spi_ss(spi_intf.spi_ss));
 
 endmodule
 

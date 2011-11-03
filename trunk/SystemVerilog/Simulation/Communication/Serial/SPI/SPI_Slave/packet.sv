@@ -10,7 +10,7 @@ rand logic [data_width_c - 1:0] data[];	//Payload using Dynamic array, size is g
 rand logic burst_mode[]; //0 - the SS is deasserted and ends the current transaction
 						//1 - the SS remains active, and next transaction starts immediately
 rand logic [3:0] delay[];//Number of delay cycles between transactions
-rand logic [3:0] freq; //spi_clk frequency 
+rand logic [3:0] freq; //spi_clk frequency = 2*freq 
 
 constraint payload_size_c { data.size inside { [1 : payload_max_len_c]};}
 
@@ -32,16 +32,16 @@ constraint solve_burst_delay { solve burst_mode before delay; }
 virtual function void display();
   $display("\n---------------------- Packet Information ------------------------- ");
   $display("Packet Length is : %d ",data.size);
-  $display("Packet data: \n");
+  $display("\nPacket data: ");
   foreach(data[i]) 
 	$write("%3d : %0h ",i ,data[i]); 
-  $display("Packet Burst mode: \n");
+  $display("\nPacket Burst mode: ");
   foreach(burst_mode[i]) 
 	$write("%3d : %0h ",i ,burst_mode[i]); 
-  $display("Packet delay time: \n");
+  $display("\nPacket delay time: ");
   foreach(delay[i]) 
 	$write("%3d : %0h ",i ,delay[i]); 
-  $write("Packet spi_clk frequency : %0h ",freq); 
+  $write("\nPacket spi_clk frequency : %0h ",freq); 
   $display("\n----------------------------------------------------------- \n");
 endfunction : display
 

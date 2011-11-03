@@ -23,16 +23,15 @@ add wave -noupdate -format Logic /spi_slave_conf_tb/spi_slave_inst/cpha
 add wave -noupdate -format Logic /spi_slave_conf_tb/spi_slave_inst/cpol
 add wave -noupdate -divider {New Divider}
 add wave -noupdate -format Literal /spi_slave_conf_tb/spi_slave_inst/cur_st
-add wave -noupdate -format Literal /spi_slave_conf_tb/spi_slave_inst/next_st
 add wave -noupdate -format Literal /spi_slave_conf_tb/spi_slave_inst/spi_sr_out
 add wave -noupdate -format Logic /spi_slave_conf_tb/spi_slave_inst/sr_out_data
 add wave -noupdate -format Literal /spi_slave_conf_tb/spi_slave_inst/spi_sr_in
 add wave -noupdate -format Literal /spi_slave_conf_tb/spi_slave_inst/sr_cnt_out
 add wave -noupdate -format Literal /spi_slave_conf_tb/spi_slave_inst/sr_cnt_in
-add wave -noupdate -format Logic /spi_slave_conf_tb/spi_slave_inst/samp_en
-add wave -noupdate -format Logic /spi_slave_conf_tb/spi_slave_inst/prop_en
+add wave -noupdate -format Logic /spi_slave_conf_tb/spi_slave_inst/spi_sr_proc/prop_en
+add wave -noupdate -format Logic /spi_slave_conf_tb/spi_slave_inst/spi_sr_proc/samp_en
 TreeUpdate [SetDefaultTree]
-WaveRestoreCursors {{Cursor 1} {2112649 ps} 0}
+WaveRestoreCursors {{Cursor 1} {2505602 ps} 0}
 configure wave -namecolwidth 295
 configure wave -valuecolwidth 100
 configure wave -justifyvalue left
@@ -46,4 +45,4 @@ configure wave -gridperiod 1000000
 configure wave -griddelta 40
 configure wave -timeline 0
 update
-WaveRestoreZoom {1708487 ps} {2233487 ps}
+WaveRestoreZoom {2255625 ps} {4618125 ps}

@@ -1,6 +1,7 @@
 `ifndef GUARD_COVERAGE
 `define GUARD_COVERAGE
 `include "packet.sv"
+`include "globals.sv"
 
 //`timescale 1ps/1ps
 
@@ -12,8 +13,8 @@ logic [3:0] delay;
 
 covergroup pkt_coverage;
 	data : coverpoint curr_data {
-		bins def 	= {0};
-		bins other 	= {1,255};
+		bins def_val 	= {0};
+		bins rand_val 	= {[1:255]};
 	}
 
 	burst_mode : coverpoint mode {
@@ -22,10 +23,10 @@ covergroup pkt_coverage;
 	}
 
 	delay_time : coverpoint delay {
-		bins delay_time[] 	= {[0:15]};
+		bins delay_time[] 	= {[1:15]};
 	}
 	
-	CRS_burst_delay : cross mode, delay;
+	CRS_burst_delay : cross burst_mode, delay_time;
 	
 endgroup
 

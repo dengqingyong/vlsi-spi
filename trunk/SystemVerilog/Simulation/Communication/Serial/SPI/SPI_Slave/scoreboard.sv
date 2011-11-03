@@ -52,7 +52,7 @@ task tx_get();
     if(pkt_rcv.compare2(pkt_exp)) 
     begin
        $display(" %0d : Scoreboard :Driver Packet Matched ",$time);
-	   cov.sample(pkt_exp);
+	   cov.sample(pkt_rcv);
     end // if
     else
       error++;

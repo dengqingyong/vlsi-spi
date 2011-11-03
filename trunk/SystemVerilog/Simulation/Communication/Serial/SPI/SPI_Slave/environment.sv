@@ -1,10 +1,10 @@
 `ifndef GUARD_ENV
 `define GUARD_ENV
-`include "Globals.sv"
-`include "Packet.sv"
-`include "Driver.sv"
-`include "Receiver.sv"
-`include "Scoreboard.sv"
+`include "globals.sv"
+`include "packet.sv"
+`include "driver.sv"
+`include "receiver.sv"
+`include "scoreboard.sv"
 
 //`timescale 1ps/1ps
 
@@ -55,9 +55,9 @@ task reset();
   host_intf.fifo_din		<=	'{default:0};
   host_intf.fifo_din_valid	<=	0;
   host_intf.fifo_empty		<=	1;
-  spi_intf.cb.spi_clk		<=	cpol;
-  spi_intf.cb.spi_ss		<=	1;
-  spi_intf.cb.spi_mosi		<=	0;
+  spi_intf.spi_clk		<=	cpol;
+  spi_intf.spi_ss		<=	1;
+  spi_intf.spi_mosi		<=	0;
   conf_intf.reg_din			<=	'{default:0};
   conf_intf.reg_din_val		<=	0;
   
@@ -98,8 +98,8 @@ task start();
   $display(" %0d : Environemnt : start of start() method",$time);
   fork
 	drvr.start();
-    rcvr.tx();
-    rcvr.rx();
+   	rcvr.tx();
+   	rcvr.rx();
 	sb.rx_get();
 	sb.tx_get();
   join_any
@@ -110,16 +110,17 @@ endtask : start
 task stop();
 	bit finish = 0;
 	
+	$display(" %0d : Environemnt : start of stop() method",$time);
 	drvr.finish(finish);
-	wait(finish == 1) // Finished driving the data from the master
+	wait(finish == 1); // Finished driving the data from the master
 	rcvr.finish();
-	$display(" %0d : Environemnt : stop () method activated",$time);
+	$display(" %0d : Environemnt : end of stop () method",$time);
 	
 endtask : stop
 	
 task wait_for_end();
    $display(" %0d : Environemnt : start of wait_for_end() method",$time);
-   repeat(10000) @(host_intf.clock);
+   repeat(10000) @(host_intf.clk);
    $display(" %0d : Environemnt : end of wait_for_end() method",$time);
    
 endtask : wait_for_end
@@ -129,8 +130,10 @@ task run();
    build();
    reset();
    cfg_dut();
-   start();
-   stop();
+   fork
+   	start();
+   	stop();
+   join
    wait_for_end();
    report();
    $display(" %0d : Environemnt : end of run() method",$time);

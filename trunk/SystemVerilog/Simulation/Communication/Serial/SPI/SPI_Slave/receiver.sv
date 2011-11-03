@@ -10,7 +10,7 @@ class Receiver;	//Slave Host
 virtual slave_host_interface.SLAVE_HOST host_intf;
 mailbox rcvr_rx2sb;
 mailbox rcvr_tx2sb;
-bit end_trans // 0 - Transmittion is ACTIVE
+bit end_trans; // 0 - Transmittion is ACTIVE
 			  // 1 - Transmittion is FINISHED
 packet gpkt;
 
@@ -19,7 +19,7 @@ function new(virtual slave_host_interface.SLAVE_HOST  host_intf_new,
 			mailbox rcvr_tx2sb, mailbox rcvr_rx2sb);
 			
    this.host_intf = host_intf_new  ;
-   if((rcvr_rx2sb == null) || (rcvr_tx2sb == null)
+   if ((rcvr_rx2sb == null) || (rcvr_tx2sb == null))
    begin
      $display(" **ERROR**: Receiver mailbox is null");
      $finish;
@@ -123,7 +123,6 @@ endtask : rx
 
 /// Method to de-activate the receiver and send the packets to the scoreboard ////
 task finish();
-begin
 	end_trans = 1;
 endtask : finish
 
