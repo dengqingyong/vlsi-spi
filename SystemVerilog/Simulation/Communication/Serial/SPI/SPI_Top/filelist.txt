@@ -1,0 +1,1 @@
+globals.sv interface.sv top.sv packet.sv master_bfm.sv driver.sv receiver.sv coverage.sv scoreboard.sv environment.sv testcase.sv
