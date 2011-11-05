@@ -4,6 +4,7 @@ add wave -noupdate -format Logic /ram_controller_tb/clk
 add wave -noupdate -format Logic /ram_controller_tb/rst
 add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/dout
 add wave -noupdate -format Logic /ram_controller_tb/dout_valid
+add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/dout_addr
 add wave -noupdate -format Logic /ram_controller_tb/finish
 add wave -noupdate -format Logic /ram_controller_tb/overflow_int
 add wave -noupdate -format Logic /ram_controller_tb/mp_done
@@ -18,15 +19,15 @@ add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/rd_addr
 add wave -noupdate -format Logic /ram_controller_tb/rd_valid
 add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/ram_data
 add wave -noupdate -format Logic /ram_controller_tb/ram_valid
-add wave -noupdate -format Literal /ram_controller_tb/ext_wr_addr
-add wave -noupdate -format Literal /ram_controller_tb/ext_wr_data
+add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/ext_wr_addr
+add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/ext_wr_data
 add wave -noupdate -format Logic /ram_controller_tb/ext_wr_valid
-add wave -noupdate -format Literal /ram_controller_tb/int_wr_addr
-add wave -noupdate -format Literal /ram_controller_tb/int_wr_data
+add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/int_wr_addr
+add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/int_wr_data
 add wave -noupdate -format Logic /ram_controller_tb/int_wr_valid
-add wave -noupdate -format Literal /ram_controller_tb/ram_controller_inst/base_addr
+add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/ram_controller_inst/base_addr
 add wave -noupdate -format Literal /ram_controller_tb/ram_controller_inst/cur_st
-add wave -noupdate -format Literal /ram_controller_tb/ram_controller_inst/burst_size
+add wave -noupdate -format Literal -radix unsigned /ram_controller_tb/ram_controller_inst/burst_size
 add wave -noupdate -format Literal /ram_controller_tb/ram_controller_inst/count_ext
 add wave -noupdate -format Literal /ram_controller_tb/ram_controller_inst/count_int
 add wave -noupdate -format Literal /ram_controller_tb/ram_controller_inst/count_val
