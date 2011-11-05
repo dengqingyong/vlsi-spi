@@ -21,24 +21,6 @@ program burst_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_i
 
 endprogram 
 
-//Reset, swing inputs
-program rst_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf);
-
-	Environment env;
-
-	initial
-	begin
-	$display(" ******************* Start of Reset testcase ****************");
-	env = new(master_intf,slave_intf);
-	$display(" ******************* Executing Testcase	 ******************");
-	env.rst_val_outs();
-	#1000;
-	end
-
-	final
-	$display(" ******************** End of Reset testcase *****************");
-
-endprogram 
 
 //All CPOL, CPHA (4 states) burst
 program cpolpha_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf);
@@ -58,6 +40,7 @@ program cpolpha_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave
 	$display(" ******************** End of CPOL, CPHA testcase *****************");
 
 endprogram 
+
 
 //All CPOL, CPHA (4 states) burst, with all Clock Frequency Range
 program clk_freq_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf);

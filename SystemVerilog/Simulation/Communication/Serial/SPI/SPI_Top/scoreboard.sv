@@ -38,25 +38,28 @@ task rx_get();
 		end // if
 		else
 			error++;
-		
+	end // forever
+	
 endtask : rx_get
 
 /// packets received at the master side ///
 task tx_get();
-
 	packet pkt_rcv,pkt_exp;
 
-	drvr_rx2sb.get(pkt_rcv);
-    $display(" %0d : (a) Scoreboard TX: Scoreboard received a packet from Driver, Length: %d ",$time, pkt_rcv.data.size);
-    rcvr_tx2sb.get(pkt_exp);
-	$display(" %0d : (b) Scoreboard TX: Scoreboard received a packet from Receiver %d, Length: %d",$time,pkt_exp.spi_ss, pkt_exp.data.size);
-    if(pkt_rcv.compare2(pkt_exp)) 
-    begin
-		$display(" %0d : Scoreboard : Driver Packet Matched ",$time);
-    end // if
-    else
-      error++;
-	  
+	forever
+	begin
+		drvr_rx2sb.get(pkt_rcv);
+		$display(" %0d : (a) Scoreboard TX: Scoreboard received a packet from Driver, Length: %d ",$time, pkt_rcv.data.size);
+		rcvr_tx2sb.get(pkt_exp);
+		$display(" %0d : (b) Scoreboard TX: Scoreboard received a packet from Receiver %d, Length: %d",$time,pkt_exp.spi_ss, pkt_exp.data.size);
+		if(pkt_rcv.compare2(pkt_exp)) 
+		begin
+			$display(" %0d : Scoreboard : Driver Packet Matched ",$time);
+		end // if
+		else
+		error++;
+	 end // forever
+	 
 endtask : tx_get
 
 

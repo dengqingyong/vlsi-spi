@@ -27,7 +27,7 @@ function new (virtual spi_master_interface.SPI_MASTER master_intf_new,
              virtual spi_slave_interface.SPI_SLAVE  slave_intf_new[4] );
 
 	this.master_intf	= master_intf_new ;
-	this.slave_intf	= slave_intf_new  ;
+	this.slave_intf		= slave_intf_new  ;
 
 	$display(" %0d : Environemnt : created env object",$time);
   
