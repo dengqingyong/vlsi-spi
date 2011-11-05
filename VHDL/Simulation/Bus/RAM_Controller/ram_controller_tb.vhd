@@ -31,7 +31,10 @@ entity ram_controller_tb is
 				data_width_g				:	positive := 8;		--RAM Data Width (UART = 8 bits)
 				ext_addr_width_g			:	positive := 10;		--Addres Width of External RAM (RAM size = 2**(addr_width_g))
 				int_addr_width_g			:	positive := 8;		--Addres Width of Internal RAM (RAM size = 2**(addr_width_g))
+				save_bit_mode_g				:	integer	:= 1;		--1 - Increase burst_size by 1, 0 - don't increase burst size
 				reg_width_g					:	positive := 8;		--Registers data width
+				type_width_g				:	positive := 8;		--Width of type register
+				len_width_g					:	positive := 9;		--Width of len register
 				max_burst_g					:	positive := 255;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
 				max_ext_addr_g				:	positive := 1023	--Maximum External RAM address (value = 2**(ext_addr_width_g))
            );
@@ -48,12 +51,13 @@ architecture sim of ram_controller_tb is
 	signal rst			:	std_logic;	--Reset
 	signal dout			:	std_logic_vector (data_width_g - 1 downto 0);	--Data that was read from external RAM
 	signal dout_valid	:	std_logic;										--Dout data is valid
+	signal dout_addr	:	std_logic_vector (int_addr_width_g - 1 downto 0); --Dout data address for ENC_RAM
 	signal finish		:	std_logic;										--Finish FLAG - end of external RAM read/write 
 	signal overflow_int :	std_logic;										--Interrupt FLAG for External RAM address OVERFLOW
 	signal mp_done		:	std_logic;	--Message Pack Decoder has finished to unpack, and registers values are valid 
 	signal type_reg		:	std_logic_vector (reg_width_g - 1 downto 0); -- Action Type : Read, Write or Config
 	signal addr_reg		:	std_logic_vector (ext_addr_width_g - 1 downto 0); -- Base address for external RAM access
-	signal len_reg		:	std_logic_vector (reg_width_g - 1 downto 0); -- Number of entries saved at the internal RAM
+	signal len_reg		:	std_logic_vector (len_width_g - 1 downto 0); -- Number of entries saved at the internal RAM
 
 --------------------- WIRES -------------------------
 				--Internal RAM interface
@@ -86,7 +90,10 @@ architecture sim of ram_controller_tb is
 				data_width_g				:	positive := 8;		--RAM Data Width (UART = 8 bits)
 				ext_addr_width_g			:	positive := 10;		--Addres Width of External RAM (RAM size = 2**(addr_width_g))
 				int_addr_width_g			:	positive := 8;		--Addres Width of Internal RAM (RAM size = 2**(addr_width_g))
+				save_bit_mode_g				:	integer	:= 1;		--1 - Increase burst_size by 1, 0 - don't increase burst size
 				reg_width_g					:	positive := 8;		--Registers data width
+				type_width_g				:	positive := 8;		--Width of type register
+				len_width_g					:	positive := 9;		--Width of len register
 				max_burst_g					:	positive := 255;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
 				max_ext_addr_g				:	positive := 1023	--Maximum External RAM address (value = 2**(ext_addr_width_g))
            );
@@ -99,6 +106,7 @@ architecture sim of ram_controller_tb is
 				--Outputs
 				dout		:	out std_logic_vector (data_width_g - 1 downto 0);	--Data that was read from external RAM
 				dout_valid	:	out std_logic;										--Dout data is valid
+				dout_addr	:	out	std_logic_vector (int_addr_width_g - 1 downto 0); --Dout data address for ENC_RAM
 				finish		:	out std_logic;										--Finish FLAG - end of external RAM read/write 
 				overflow_int:	out std_logic;										--Interrupt FLAG for External RAM address OVERFLOW
 				
@@ -154,7 +162,10 @@ begin
 										data_width_g		=>	data_width_g,
 										ext_addr_width_g	=>	ext_addr_width_g,
 										int_addr_width_g	=>	int_addr_width_g,
+										save_bit_mode_g		=>	save_bit_mode_g,
 										reg_width_g			=>	reg_width_g,
+										type_width_g		=>	type_width_g,			
+										len_width_g			=>	len_width_g,				
 										max_burst_g			=>	max_burst_g,
 										max_ext_addr_g		=>	max_ext_addr_g
 										)
@@ -164,6 +175,7 @@ begin
 										rst					=>	rst,
 										dout				=>	dout,
 										dout_valid			=>	dout_valid,
+										dout_addr			=>	dout_addr,
 										finish				=>	finish,
 										overflow_int		=>	overflow_int,
 										mp_done				=>	mp_done,
@@ -255,7 +267,7 @@ begin
 	begin
 		int_wr_valid	<=	'0';
 		wait for 100 ns;
-		int_wr_data	<=	"00000100";
+		int_wr_data	<=	"00000011";
 		int_wr_addr	<=	"00000000";
 		int_wr_valid	<=	'1';
 		wait for 100 ns;
@@ -271,8 +283,8 @@ begin
 		addr_reg	<=	(others	=>	'0');
 		wait for 600 ns;
 		mp_done	<=	'1';
-		type_reg	<=	"00000001";	-- READ
-		len_reg		<=	"00000001";	-- one byte in the Int_RAM
+		type_reg	<=	"00000010";	-- READ
+		len_reg		<=	"000000000";	-- one byte in the Int_RAM
 		addr_reg	<=	"1000000000";	-- Base address
 		wait for 100 ns;
 		mp_done	<=	'0';

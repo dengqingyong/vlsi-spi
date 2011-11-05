@@ -43,7 +43,10 @@ entity ram_controller is
 				data_width_g				:	positive := 8;		--RAM Data Width (UART = 8 bits)
 				ext_addr_width_g			:	positive := 10;		--Addres Width of External RAM (RAM size = 2**(addr_width_g))
 				int_addr_width_g			:	positive := 8;		--Addres Width of Internal RAM (RAM size = 2**(addr_width_g))
+				save_bit_mode_g				:	integer	:= 1;		--1 - Increase burst_size by 1, 0 - don't increase burst size
 				reg_width_g					:	positive := 8;		--Registers data width
+				type_width_g				:	positive := 8;		--Width of type register
+				len_width_g					:	positive := 9;		--Width of len register
 				max_burst_g					:	positive := 255;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
 				max_ext_addr_g				:	positive := 1023	--Maximum External RAM address (value = 2**(ext_addr_width_g))
            );
@@ -56,6 +59,7 @@ entity ram_controller is
 				--Outputs
 				dout		:	out std_logic_vector (data_width_g - 1 downto 0);	--Data that was read from external RAM
 				dout_valid	:	out std_logic;										--Dout data is valid
+				dout_addr	:	out	std_logic_vector (int_addr_width_g - 1 downto 0); --Dout data address for ENC_RAM
 				finish		:	out std_logic;										--Finish FLAG - end of external RAM read/write 
 				overflow_int:	out std_logic;										--Interrupt FLAG for External RAM address OVERFLOW
 				
@@ -63,9 +67,9 @@ entity ram_controller is
 				mp_done		:	in std_logic;	--Message Pack Decoder has finished to unpack, and registers values are valid 
 				
 				--Registers Interface
-				type_reg	:	in std_logic_vector (reg_width_g - 1 downto 0); -- Action Type : Read, Write or Config
+				type_reg	:	in std_logic_vector (type_width_g - 1 downto 0); -- Action Type : Read, Write or Config
 				addr_reg	:	in std_logic_vector (ext_addr_width_g - 1 downto 0); -- Base address for external RAM access
-				len_reg		:	in std_logic_vector (reg_width_g - 1 downto 0); -- Number of entries saved at the internal RAM
+				len_reg		:	in std_logic_vector (len_width_g - 1 downto 0); -- Number of entries saved at the internal RAM
 
 				--Internal RAM Interface - READ only
 				addr		:	out std_logic_vector (int_addr_width_g - 1 downto 0); --Address for internal RAM read
@@ -98,8 +102,8 @@ architecture rtl_ram_controller of ram_controller is
 
 
 	------------------  CONSTANTS ------------------
-	constant read_type	:	std_logic_vector (reg_width_g - 1 downto 0)	:=	(0 => '1', others => '0');
-	constant write_type	:	std_logic_vector (reg_width_g - 1 downto 0)	:=	(1 => '1', others => '0');
+	constant read_type	:	std_logic_vector (type_width_g - 1 downto 0)	:= x"02";	--Read
+	constant write_type	:	std_logic_vector (type_width_g - 1 downto 0)	:= x"01";	--Write
 
 
 	------------------  SIGNALS  -------------------
@@ -113,9 +117,8 @@ architecture rtl_ram_controller of ram_controller is
 																				--correct Int RAM address
 	signal count_val	:	integer range 0 to max_burst_g;						--Counts valid data words read from the Ext RAM
 	signal burst_valid	:	std_logic;											--Indicates burst_size value is updated
-	signal ilen_reg		:	std_logic_vector (reg_width_g - 1 downto 0); 		-- Number of entries saved at the internal RAM
-	signal itype_reg	:	std_logic_vector (reg_width_g - 1 downto 0); 		-- Action Type : Read, Write or Config
-
+	signal ilen_reg		:	std_logic_vector (len_width_g - 1 downto 0); 		-- Number of entries saved at the internal RAM
+	signal itype_reg	:	std_logic_vector (type_width_g - 1 downto 0); 		-- Action Type : Read, Write or Config
 
 
 begin
@@ -232,13 +235,13 @@ begin
 			if (cur_st = burst_calc_st) then --Need to calculate new burst value
 				if (itype_reg = read_type) then --Internal RAM contains the burst size
 					if (din_valid = '1') then -- Data from internal RAM is valid
-						burst_size	<=	conv_integer(data_in);
+						burst_size	<=	conv_integer(data_in) + save_bit_mode_g;
 						burst_valid	<=	'1';
 					else
 						burst_valid	<=	'0';
 					end if;
 				elsif (itype_reg = write_type) then --burst_size = the value of the length register
-					burst_size	<=	conv_integer(ilen_reg);
+					burst_size	<=	conv_integer(ilen_reg) + save_bit_mode_g;
 					burst_valid	<=	'1';
 				else
 					burst_valid	<=	'0';
@@ -383,13 +386,15 @@ begin
 	dout_proc: process (clk, rst)
 	begin
 		if (rst = reset_polarity_g) then --Reset
-			dout	<=	(others => '0');
+			dout		<=	(others => '0');
 			dout_valid	<=	'0';
+			dout_addr	<=	(others => '0');
 		
 		elsif rising_edge(clk) then
 			if (ram_valid = '1') then --Input data from external RAM is valid, transfer it back to slave host
-				dout	<=	ram_data;
+				dout		<=	ram_data;
 				dout_valid	<=	'1';
+				dout_addr	<=	conv_std_logic_vector(count_val, int_addr_width_g);
 			else
 				dout_valid	<=	'0';
 			end if;
