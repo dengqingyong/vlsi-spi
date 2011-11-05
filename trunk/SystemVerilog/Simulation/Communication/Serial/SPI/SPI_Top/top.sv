@@ -37,12 +37,8 @@ spi_slave_interface slave_intf[4](clk);
 /////////////////////////////////////////////////////
 
 burst_testcase TC1 (master_intf, slave_intf);
-//rst_testcase TC2 (master_intf, slave_intf);
 //cpolpha_testcase TC3 (master_intf, slave_intf);
 //clk_freq_testcase TC4 (master_intf, slave_intf);
-//wr_forb_regs TC5 (master_intf, slave_intf);
-//fifo_val_err TC6 (master_intf, slave_intf);
-//wr_err_clk_div TC7 (master_intf, slave_intf);
 
 /////////////////////////////////////////////////////
 //  DUT instance and signal connection             //
