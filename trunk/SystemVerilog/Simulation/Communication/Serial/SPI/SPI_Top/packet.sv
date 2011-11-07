@@ -5,7 +5,7 @@
 class packet;
 
 	rand logic [data_width_c - 1:0] data[];						//Payload using Dynamic array,size is generated on the fly
-	randc int spi_ss; //SPI Slave Select
+	rand int spi_ss; //SPI Slave Select
 
 	constraint spi_ss_addr_c {spi_ss < bits_of_slaves_c && spi_ss >= 0;}
 

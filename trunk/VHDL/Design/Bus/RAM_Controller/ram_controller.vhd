@@ -46,8 +46,8 @@ entity ram_controller is
 				save_bit_mode_g				:	integer	:= 1;		--1 - Increase burst_size by 1, 0 - don't increase burst size
 				reg_width_g					:	positive := 8;		--Registers data width
 				type_width_g				:	positive := 8;		--Width of type register
-				len_width_g					:	positive := 9;		--Width of len register
-				max_burst_g					:	positive := 255;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
+				len_width_g					:	positive := 8;		--Width of len register
+				max_burst_g					:	positive := 256;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
 				max_ext_addr_g				:	positive := 1023	--Maximum External RAM address (value = 2**(ext_addr_width_g))
            );
    port
@@ -111,11 +111,11 @@ architecture rtl_ram_controller of ram_controller is
 	signal ifinish		:	std_logic;											--Internal finish signal
 	signal cur_st		:	controller_states;									--FSM state
 	signal burst_size	:	integer range 0 to max_burst_g;						--Data burst size
-	signal count_ext	:	integer range 0 to max_burst_g;						--Counts the number of read/write cycles in order to access the 
+	signal count_ext	:	integer range 0 to 2*max_burst_g;						--Counts the number of read/write cycles in order to access the 
 																				--correct Ext RAM address
-	signal count_int	:	integer range 0 to max_burst_g;						--Counts the number of read cycles in order to access the 
+	signal count_int	:	integer range 0 to 2*max_burst_g;						--Counts the number of read cycles in order to access the 
 																				--correct Int RAM address
-	signal count_val	:	integer range 0 to max_burst_g;						--Counts valid data words read from the Ext RAM
+	signal count_val	:	integer range 0 to 2*max_burst_g;						--Counts valid data words read from the Ext RAM
 	signal burst_valid	:	std_logic;											--Indicates burst_size value is updated
 	signal ilen_reg		:	std_logic_vector (len_width_g - 1 downto 0); 		-- Number of entries saved at the internal RAM
 	signal itype_reg	:	std_logic_vector (type_width_g - 1 downto 0); 		-- Action Type : Read, Write or Config

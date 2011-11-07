@@ -249,9 +249,9 @@ architecture rtl_slave_host of slave_host is
 				save_bit_mode_g		:	integer	:= 1;		--1 - Increase burst_size by 1, 0 - don't increase burst size
 				reg_width_g			:	positive := 8;		--Registers data width
 				type_width_g		:	positive := 8;		--Width of type register
-				len_width_g			:	positive := 9;		--Width of len register
-				max_burst_g			:	positive := 255;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
-				max_ext_addr_g		:	positive := 1023	--Maximum External RAM address (value = 2**(ext_addr_width_g))
+				len_width_g			:	positive := 8;		--Width of len register
+				max_burst_g			:	positive := 256;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
+				max_ext_addr_g		:	positive := 1024	--Maximum External RAM address (value = 2**(ext_addr_width_g))
 				);
 		port	(
 				--Inputs

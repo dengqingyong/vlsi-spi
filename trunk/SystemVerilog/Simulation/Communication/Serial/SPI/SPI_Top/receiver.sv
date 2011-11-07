@@ -16,7 +16,9 @@ class Receiver;	//Slave Host
 	virtual spi_slave_interface.SPI_SLAVE slave_intf;
 	mailbox rcvr_rx2sb;
 	mailbox rcvr_tx2sb;
-	bit end_trans; // 0 - Transmittion is ACTIVE
+	bit tx_end_trans; 	// 0 - Transmittion is ACTIVE
+				// 1 - Transmittion is FINISHED
+	bit rx_end_trans; 	// 0 - Transmittion is ACTIVE
 				// 1 - Transmittion is FINISHED
 	re_packet gpkt;
 	int receiver_sernum;	//Serial Number
@@ -37,7 +39,8 @@ function new (virtual spi_slave_interface.SPI_SLAVE  slave_intf_new, mailbox rcv
 		this.rcvr_rx2sb = rcvr_rx2sb;
 	end // else
 	gpkt = new();
-	this.end_trans = 0;
+	this.tx_end_trans = 0;
+	this.rx_end_trans = 0;
 	this.receiver_sernum	= receiver_sernum_new;
    
 endfunction : new  
@@ -63,17 +66,17 @@ task tx();
 			//// calculate the number of words ////
 			length = pkt.data.size;
 		
-			while (end_trans == 0)
+			while (tx_end_trans == 0)
 			begin
 				if (i < length) //pkt has data to return
 				begin
 					slave_intf.fifo_empty	<=	0;
-					wait(slave_intf.fifo_req_data == 1 || end_trans == 1);
+					wait(slave_intf.fifo_req_data == 1 || tx_end_trans == 1);
 					if (slave_intf.fifo_req_data == 1)
 					begin
 						@(posedge slave_intf.clk);
 						slave_intf.fifo_din_valid	<=	1;
-						slave_intf.fifo_din			<=	pkt.data[i];
+						slave_intf.fifo_din		<=	pkt.data[i];
 						@(posedge slave_intf.clk);
 						slave_intf.fifo_din_valid	<=	0;
 					end // if
@@ -81,7 +84,7 @@ task tx();
 				else // FIFO has no data
 				begin
 					slave_intf.fifo_empty	<=	1;
-					wait(end_trans == 1);
+					wait(tx_end_trans == 1);
 				end // else
 				i	=	i + 1;
 			end // while
@@ -89,10 +92,12 @@ task tx();
 			//// Push the packet in to mailbox for scoreboard /////
 			rcvr_tx2sb.put(pkt);
 			$display(" %0d : Receiver %d: Finished Driving the packet with length %0d",$time,receiver_sernum,pkt.data.size);
+			
+			repeat(2) @(posedge slave_intf.clk);
 
 			//// Allow new transmition to start
-			end_trans = 0;
-			
+			tx_end_trans = 0;
+
 		end // randomize successfull
 		else
 		begin
@@ -112,9 +117,9 @@ task rx();
 
 	forever
 	begin
-		while (end_trans == 0)
+		while (rx_end_trans == 0)
 		begin
-			wait(slave_intf.dout_valid == 1 || end_trans == 1);	//Wait for New Data
+			wait(slave_intf.dout_valid == 1 || rx_end_trans == 1);	//Wait for New Data
 			if (slave_intf.dout_valid == 1)
 			begin
 				bytes = new[bytes.size + 1](bytes);
@@ -135,13 +140,18 @@ task rx();
 		$display(" %0d : Receiver %d: Finished receiving the packet with length %0d",$time,receiver_sernum,pkt.data.size); 
 		pkt.display();
 		bytes.delete();
+
+		//// Allow new transmition to start
+		rx_end_trans = 0;
+
 	end // forever
 	
 endtask : rx
 
 /// Method to de-activate the receiver and send the packets to the scoreboard ////
 task finish();
-	end_trans = 1;
+	tx_end_trans = 1;
+	rx_end_trans = 1;
 endtask : finish
 
 endclass

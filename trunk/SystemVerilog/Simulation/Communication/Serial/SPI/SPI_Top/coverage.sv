@@ -1,6 +1,6 @@
 `ifndef GUARD_COVERAGE
 `define GUARD_COVERAGE
-`include "Packet.sv"
+`include "packet.sv"
 `include "globals.sv"
 
 class coverage;
@@ -10,7 +10,7 @@ class coverage;
 	covergroup pkt_coverage;
 
 		length 	: coverpoint pkt.data.size {
-			bins size[] 	= 	{[1:payload_max_len_c]};
+			bins size[] 	= 	{[10:payload_max_len_c]};
 		}
 		
 		slave_num	:	coverpoint pkt.spi_ss {

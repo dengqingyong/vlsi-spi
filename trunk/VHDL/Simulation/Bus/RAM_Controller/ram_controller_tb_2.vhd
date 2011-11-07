@@ -34,9 +34,9 @@ entity ram_controller_tb_2 is
 				save_bit_mode_g				:	integer	:= 1;		--1 - Increase burst_size by 1, 0 - don't increase burst size
 				reg_width_g					:	positive := 8;		--Registers data width
 				type_width_g				:	positive := 8;		--Width of type register
-				len_width_g					:	positive := 9;		--Width of len register
-				max_burst_g					:	positive := 255;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
-				max_ext_addr_g				:	positive := 1023	--Maximum External RAM address (value = 2**(ext_addr_width_g))
+				len_width_g					:	positive := 8;		--Width of len register
+				max_burst_g					:	positive := 256;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
+				max_ext_addr_g				:	positive := 1024	--Maximum External RAM address (value = 2**(ext_addr_width_g))
            );
 end entity ram_controller_tb_2;
 
@@ -90,9 +90,9 @@ architecture sim of ram_controller_tb_2 is
 				save_bit_mode_g				:	integer	:= 1;		--1 - Increase burst_size by 1, 0 - don't increase burst size
 				reg_width_g					:	positive := 8;		--Registers data width
 				type_width_g				:	positive := 8;		--Width of type register
-				len_width_g					:	positive := 9;		--Width of len register
-				max_burst_g					:	positive := 255;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
-				max_ext_addr_g				:	positive := 1023	--Maximum External RAM address (value = 2**(ext_addr_width_g))
+				len_width_g					:	positive := 8;		--Width of len register
+				max_burst_g					:	positive := 256;	--Maximum data burst (MUST be smaller than 2**(data_width_g))
+				max_ext_addr_g				:	positive := 1024	--Maximum External RAM address (value = 2**(ext_addr_width_g))
            );
 		port
 			(
@@ -240,26 +240,12 @@ begin
 	begin
 		int_wr_valid	<=	'0';
 		wait for 100 ns;
-		int_wr_data	<=	"00000100";
-		int_wr_addr	<=	"00000000";
-		int_wr_valid	<=	'1';
-		wait for 100 ns;
-		int_wr_data	<=	"00001000";
-		int_wr_addr	<=	"00000001";
-		int_wr_valid	<=	'1';
-		wait for 100 ns;
-		int_wr_data	<=	"00010000";
-		int_wr_addr	<=	"00000010";
-		int_wr_valid	<=	'1';
-		wait for 100 ns;
-		int_wr_data	<=	"00100000";
-		int_wr_addr	<=	"00000011";
-		int_wr_valid	<=	'1';
-		wait for 100 ns;
-		int_wr_data	<=	"01000000";
-		int_wr_addr	<=	"00000100";
-		int_wr_valid	<=	'1';
-		wait for 100 ns;
+		for i in 0 to 255 loop
+			int_wr_data	<=	conv_std_logic_vector(i, int_addr_width_g);
+			int_wr_addr	<=	conv_std_logic_vector(i, int_addr_width_g);
+			int_wr_valid	<=	'1';
+			wait for 100 ns;
+		end loop;
 		int_wr_valid	<=	'0';
 		wait;
 	end process int_ram_init_proc;
@@ -270,10 +256,10 @@ begin
 		type_reg	<=	(others	=>	'0');
 		len_reg		<=	(others	=>	'0');
 		addr_reg	<=	(others	=>	'0');
-		wait for 700 ns;
+		wait for 30000 ns;
 		mp_done	<=	'1';
 		type_reg	<=	"00000001";	-- WRITE
-		len_reg		<=	"000000100";	-- burst size	=	5
+		len_reg		<=	"11111111";	-- burst size	=	256
 		addr_reg	<=	"0100000000";	-- Base address = 256
 		wait for 100 ns;
 		mp_done	<=	'0';
