@@ -3,17 +3,23 @@
 
 module top();
 
+initial begin
+
+        $vcdpluson();
+
+end
+
 /////////////////////////////////////////////////////
-// clk Declaration					                //
+// 		clk Declaration			   //
 /////////////////////////////////////////////////////
 bit clk;
 
 /////////////////////////////////////////////////////
-// 						WIRES              		   //
+// 			WIRES              	   //
 /////////////////////////////////////////////////////
-wire 								spi_clk;
-wire								spi_miso;
-wire								spi_mosi;
+wire 					spi_clk;
+wire					spi_miso;
+wire					spi_mosi;
 wire	[bits_of_slaves_c - 1:0]	spi_ss;
 
 

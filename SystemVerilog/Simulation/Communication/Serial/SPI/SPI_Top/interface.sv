@@ -1,7 +1,6 @@
-
 `ifndef GUARD_INTERFACE
 `define GUARD_INTERFACE
-`include "Globals.sv"
+`include "globals.sv"
 
 ///////////////////////////////////////////////
 // Interface declaration for SPI inputs		///
@@ -60,7 +59,7 @@ interface spi_slave_interface(input bit clk);
   logic 						dout_valid;		//Output data is valid
   logic							interrupt;		//Transaction was interrupted
   
-  modport SLAVE_HOST (
+  modport SPI_SLAVE (
 		input 	clk, fifo_req_data, busy, dout, dout_valid, interrupt, reg_ack,
 		output 	rst, fifo_din, fifo_din_valid, fifo_empty, reg_din, reg_din_val
 				);

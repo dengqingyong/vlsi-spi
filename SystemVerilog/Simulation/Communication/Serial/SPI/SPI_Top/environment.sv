@@ -42,12 +42,10 @@ function void build();
 	rcvr_rx2sb = new();
 	sb = new(drvr_tx2sb, drvr_rx2sb, rcvr_tx2sb, rcvr_rx2sb);
 	drvr = new(master_intf, drvr_tx2sb, drvr_rx2sb);
-	fork
-		rcvr[0]= new(slave_intf[0], rcvr_tx2sb, rcvr_rx2sb, 0);
-		rcvr[1]= new(slave_intf[1], rcvr_tx2sb, rcvr_rx2sb, 1);
-		rcvr[2]= new(slave_intf[2], rcvr_tx2sb, rcvr_rx2sb, 2);
-		rcvr[3]= new(slave_intf[3], rcvr_tx2sb, rcvr_rx2sb, 3);
-	join
+	rcvr[0]= new(slave_intf[0], rcvr_tx2sb, rcvr_rx2sb, 0);
+	rcvr[1]= new(slave_intf[1], rcvr_tx2sb, rcvr_rx2sb, 1);
+	rcvr[2]= new(slave_intf[2], rcvr_tx2sb, rcvr_rx2sb, 2);
+	rcvr[3]= new(slave_intf[3], rcvr_tx2sb, rcvr_rx2sb, 3);
 	$display(" %0d : Environemnt : end of build() method",$time);
 	
 endfunction : build
@@ -95,7 +93,7 @@ task cfg_dut(logic [reg_din_width_c - 1:0] clk_div_reg, logic [reg_din_width_c -
 	master_intf.reg_addr 		<= '{default:0};	//Clock Divide register
 	master_intf.reg_din 		<= clk_div_reg;
 	master_intf.reg_din_val		<= 1;
-	@(posedge in_intf.clk);
+	@(posedge master_intf.clk);
 	master_intf.reg_addr 		<= 1;	//CPHA, CPOL Register
 	master_intf.reg_din 		<= cphapol_reg;
 	master_intf.reg_din_val		<= 1;
@@ -154,7 +152,7 @@ endtask : start
 
 task stop();
 	bit finish;
-	bit rec_num;
+	int rec_num;
 	
 	forever
 	begin
@@ -171,7 +169,7 @@ endtask : stop
 
 task wait_for_end();
 	$display(" %0d : Environemnt : start of wait_for_end() method",$time);
-	repeat(10000) @(in_intf.clk);
+	repeat(10000) @(master_intf.clk);
 	$display(" %0d : Environemnt : end of wait_for_end() method",$time);
 endtask : wait_for_end
 
@@ -186,7 +184,7 @@ task run();
 	fork
 		start();
 		stop();
-	join
+	join_any
 	wait_for_end();
 	report();
 	$display(" %0d : Environemnt : end of run() method",$time);
@@ -262,7 +260,7 @@ task run_clk_freq();
 			$display ("Clk Reg: %h, CPOLPHA Reg : %h", clk_regs, temp_regs);
 			cfg_dut(clk_regs, temp_regs);
 			//temp_regs[1:0] = cpolpha; //Change CPOL, CPHA
-			drvr.start();	//Execute transmission
+			drvr.tx();	//Execute transmission
 			repeat(50) @(posedge master_intf.clk);
 			clk_regs++;					//Change clock frequency
 			if (cpolpha < 2)

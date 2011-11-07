@@ -17,6 +17,7 @@ class Driver;
 	mailbox drvr_rx2sb;	//Received data
 	event end_burst;
 	dr_packet gpkt;
+	int receiver_num;
 
 //// constructor method ////
 function new (virtual spi_master_interface.SPI_MASTER  master_intf_new, mailbox drvr_tx2sb, mailbox drvr_rx2sb);
@@ -55,6 +56,7 @@ task tx();
 		//// Randomize the packet /////
 		if ( pkt.randomize())
 		begin
+			receiver_num = pkt.spi_ss;
 			$display (" %0d : Driver : Transmitting packet:",$time);
 			//// display the packet content ///////
 			pkt.display();
@@ -84,7 +86,7 @@ task tx();
 			@(negedge master_intf.busy);	//To ensure that last dout_valid from SPI Master has been asserted
 			repeat(1) @(posedge master_intf.clk);	//In case BUSY negates with DOUT_VALID at the same clock
 			if (master_intf.dout_valid)
-				@(negedge master_intf.dout_valid)
+				@(negedge master_intf.dout_valid);
 				
 			->end_burst;
 			$display(" %0d : Driver : Finished Driving the packet with length %0d",$time,pkt.data.size); 
@@ -97,7 +99,7 @@ task tx();
 		end // else
 	end // repeat(num_of_pkts)
 	
-endtask : start
+endtask : tx
 
 
 /// method to read the packets from DUT ////////
@@ -131,11 +133,11 @@ task rx();
 endtask : rx
 
 /// Method to de-activate the driver and the receiver ///
-task finish(ref bit drvr_finish, ref bit rec_num);
+task finish(ref bit drvr_finish, ref int rec_num);
 	@(end_burst);
 	drvr_finish = 1;
-	rec_num		= pkt.spi_ss;
-	//$display (" %0d Driver : Activated test finish process",$time);
+	rec_num	= receiver_num;
+	$display (" %0d Driver : Activated test finish process",$time);
 endtask : finish
 
 endclass

@@ -1,9 +1,9 @@
 `ifndef GUARD_TESTCASE
 `define GUARD_TESTCASE
-`include "environemnt.sv"
+`include "environment.sv"
 
 //Normal Burst
-program burst_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf);
+program burst_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf[4]);
 
 	Environment env;
 
@@ -23,7 +23,7 @@ endprogram
 
 
 //All CPOL, CPHA (4 states) burst
-program cpolpha_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf);
+program cpolpha_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf[4]);
 
 	Environment env;
 
@@ -43,7 +43,7 @@ endprogram
 
 
 //All CPOL, CPHA (4 states) burst, with all Clock Frequency Range
-program clk_freq_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf);
+program clk_freq_testcase (spi_master_interface.SPI_MASTER master_intf, spi_slave_interface.SPI_SLAVE slave_intf[4]);
 
 	Environment env;
 
