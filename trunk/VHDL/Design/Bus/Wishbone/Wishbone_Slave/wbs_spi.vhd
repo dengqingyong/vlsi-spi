@@ -96,6 +96,7 @@ entity wbs_spi is
 		spi_reg_addr			:	out std_logic_vector (reg_addr_width_g - 1 downto 0);	--Address to registers
 		spi_reg_din				:	out std_logic_vector (reg_din_width_g - 1 downto 0);	--Data to registers
 		spi_reg_din_val			:	out std_logic;											--Data to registers is valid
+		spi_busy				:	in 	std_logic;											--SPI Master is Busy
 		spi_reg_ack				:	in	std_logic;											--SPI Registers - data acknowledged
 		spi_reg_err				:	in	std_logic											--SPI Registers - error while writing data to SPI
 	);
@@ -111,6 +112,7 @@ constant type_rd_c		:	std_logic_vector (data_width_g - 1 downto 0) := x"02";	--R
 type fsm_states is
 					(	idle_st,		--Idle
 						reg_wr_st,		--Writing to SPI Registers
+						reg_wr_wait_st,	--Wait for data to propagate
 						reg_done_st,	--Expected : spi_reg_ack or spi_reg_err
 						rx_prep_ram_st,	--Prepare RX: Write to RAM the required burst length
 						rx_cmd_st,		--Transmit Read command
@@ -119,6 +121,7 @@ type fsm_states is
 						tx_data_st,		--Transfer data from WBS I/F to M.P. Encoder
 						rx_data_st,		--Receive data from WBS I/F from M.P. Decoder
 						end_tx_st,		--End of transmission
+						wait_busy_neg_st,--Wait for SPI_BUSY negation
 						end_rx_st		--End of receive
 					);
 
@@ -133,6 +136,7 @@ signal int_cyc			:	std_logic;										--Internal WBS_CYC, for validating end of
 signal int_cyc_d1		:	std_logic;										--Internal WBS_CYC (with one clock delay), for validating end of cycle
 signal int_ram_enc_addr	:	std_logic_vector (blen_width_g - 1 downto 0);	--Internal ram_enc_addr
 signal int_ram_dec_addr	:	std_logic_vector (blen_width_g - 1 downto 0);	--Internal ram_dec_addr
+signal int_wbs_ack		:	std_logic;										--Internal WBS_ACK_O
 
 ----------------------------------	Implementation	---------------------------
 begin
@@ -152,6 +156,10 @@ ram_dec_addr	<=	int_ram_dec_addr;
 --WBS_DAT_O (Output Data)
 wbs_dat_o_proc:
 wbs_dat_o	<=	ram_dec_dout;
+
+--WBS_ACK_O
+wbs_ack_o <= 	'0' when (cur_st = end_tx_st) 
+				else int_wbs_ack;
 
 --INT_CYC_d1_Process:
 --int_cyc will assert at idle_st, at start of cycle, and negate when cycle is done,
@@ -181,7 +189,10 @@ begin
 	if (rst = reset_polarity_g) then
 		wbs_stall_o	<=	'1';
 	elsif rising_edge (clk_i) then
-		if (cur_st = end_tx_st) or (cur_st = end_rx_st) or (cur_st = reg_done_st) then --idle_st is not required, since it will already be there at '1'
+		if (cur_st = end_tx_st) 
+		or (cur_st = end_rx_st) 
+		or (cur_st = reg_done_st) 
+		or (spi_busy = '1') then --idle_st is not required, since it will already be there at '1'
 			wbs_stall_o	<=	'1';
 		elsif (cur_st = neg_stall_st) then
 			wbs_stall_o	<=	'0';
@@ -189,25 +200,23 @@ begin
 	end if;
 end process wbs_stall_o_proc;
 
---WBS_ACK_O
-wbs_ack_o_proc: process (clk_i, rst)
+--INT_WBS_ACK_O
+int_wbs_ack_o_proc: process (clk_i, rst)
 begin
 	if (rst = reset_polarity_g) then
-		wbs_ack_o	<=	'0';
+		int_wbs_ack	<=	'0';
 	elsif rising_edge (clk_i) then
-		if (cur_st = rx_data_st) then
-			wbs_ack_o	<=	'1';
+		if (cur_st = reg_done_st) and (spi_reg_ack = '1') then
+			int_wbs_ack	<=	'1';
+		elsif (cur_st = rx_data_st) then
+			int_wbs_ack	<=	'1';
 		elsif (cur_st = tx_data_st) then
-			if (ram_dec_dout_val = '1') then
-				wbs_ack_o	<=	'1';
-			else
-				wbs_ack_o	<=	'0';
-			end if;
+			int_wbs_ack	<=	'1';
 		else
-			wbs_ack_o	<=	'0';
+			int_wbs_ack	<=	'0';
 		end if;
 	end if;
-end process wbs_ack_o_proc;
+end process int_wbs_ack_o_proc;
 
 --SPI Register process
 width_assert_addr:
@@ -265,7 +274,7 @@ begin
 			ram_enc_din			<=	wbs_dat_i;
 			ram_enc_din_val		<=	'1';
 		else
-			int_ram_enc_addr	<=	(others => '0');
+			int_ram_enc_addr	<=	(others => '1');
 			ram_enc_din			<=	(others => '0');
 			ram_enc_din_val		<=	'0';
 		end if;
@@ -320,6 +329,9 @@ begin
 				end if;
 				
 			when reg_wr_st =>
+				cur_st	<=	reg_wr_wait_st;
+
+			when reg_wr_wait_st =>
 				cur_st	<=	reg_done_st;
 				
 			when reg_done_st =>
@@ -396,10 +408,17 @@ begin
 				end if;
 				
 			when end_tx_st	=>
-				if (int_cyc = '0') and (mp_enc_done = '1') then	--WBS_CYC was negated ; All data has been transmitted to SPI
-					cur_st	<=	idle_st;
-				else
+				if (spi_busy = '0') then	--Wait for SPI_BUSY assertion
 					cur_st	<=	cur_st;
+				else
+					cur_st	<=	wait_busy_neg_st;
+				end if;
+				
+			when wait_busy_neg_st =>
+				if (spi_busy = '1') then	--Wait for SPI_BUSY negation
+					cur_st	<=	cur_st;
+				else
+					cur_st	<=	idle_st;
 				end if;
 			
 			when end_rx_st	=>
@@ -455,16 +474,22 @@ begin
 	if (rst = reset_polarity_g) then
 		wbs_err_o	<=	'0';
 	elsif rising_edge(clk_i) then
-		if (cur_st = tx_data_st) and (ram_dec_dout_val = '0') then
+		if (cur_st = rx_data_st) and (ram_dec_dout_val = '0') then
 			wbs_err_o	<=	'1';
+			report "Time: " & time'image (now) & ", WBS_SPI >> tx_data_state: Decoder RAM data is not valid."
+			severity error;
 		elsif (cur_st = rx_wait_data_st) then
 			if (mp_dec_crc_err = '1') or (mp_dec_eof_err = '1') then
 				wbs_err_o		<=	'1';
+				report "Time: " & time'image (now) & ", WBS_SPI >> rx_wait_data_st: CRC Error / EOF Error detected."
+				severity error;
 			elsif (mp_dec_done = '1') then
 				if (mp_dec_type_reg /= type_rd_c)
 				or (mp_dec_addr_reg /= wbs_adr_i)
 				or (mp_dec_len_reg 	/= wbs_tga_i) then
 					wbs_err_o	<=	'1';
+					report "Time: " & time'image (now) & ", WBS_SPI >> mp_dec_done is '1', but type / adr / tga mismatch."
+					severity error;
 				else
 					wbs_err_o	<=	'0';
 				end if;
@@ -474,6 +499,8 @@ begin
 		elsif (cur_st = reg_done_st)	--Wait for ACK / ERR from SPI Registers
 			and ((spi_reg_ack = '0') or (spi_reg_err = '1')) then
 			wbs_err_o	<=	'1';
+			report "Time: " & time'image (now) & ", WBS_SPI >> reg_done_st: No REG_ACK detected or REG_ERR detected."
+			severity error;
 		else
 			wbs_err_o			<=	'0';
 		end if;
@@ -555,7 +582,7 @@ end process rx_blen_proc;
 
 --End of transmission to RAM, for read prepate (in case blen_width_g>=data_width)
 blen_sr_b_gen1:
-if (blen_width_g >= data_width_g) generate
+if (blen_width_g > data_width_g) generate
 	blen_sr_b_proc: process (clk_i, rst)
 	constant zero_c : std_logic_vector (blen_width_g - 1 downto data_width_g) := (others => '0'); 
 	begin
@@ -570,7 +597,7 @@ end generate blen_sr_b_gen1;
 
 --End of transmission to RAM, for read prepate (in case blen_width_g<data_width)
 blen_sr_b_gen2:
-if (blen_width_g < data_width_g) generate
+if (blen_width_g <= data_width_g) generate
 	blen_sr_b_proc:
 	blen_sr_b	<=	true;
 end generate blen_sr_b_gen2;

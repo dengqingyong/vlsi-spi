@@ -137,7 +137,7 @@ signal len_blk		:	std_logic_vector (width_g * len_d_g - 1 downto 0);	--Length bl
 signal crc_blk		:	std_logic_vector (width_g * crc_d_g - 1 downto 0); 	--CRC Block
 signal eof_blk		:	std_logic_vector (width_g * eof_d_g - 1 downto 0);	--EOF Blcok
 	
-signal w_addr 		:	natural range 0 to 2**(len_d_g*width_g) - 1;		--Address to write to RAM
+signal w_addr 		:	natural range 0 to 2**(len_d_g*width_g);		--Address to write to RAM
 signal blk_pos		:	positive range 1 to maximum(sof_d_g, maximum (type_d_g, maximum (addr_d_g, maximum(len_d_g, maximum(crc_d_g, eof_d_g)))));	--Current position (depth) in block
 
 signal sof_sr		:	std_logic_vector (width_g * (sof_d_g - 1) downto 0);		--Shift Register of SOF

@@ -135,7 +135,7 @@ signal crc_blk		:	std_logic_vector (width_g * crc_d_g - 1 downto 0); 	--CRC Bloc
 signal eof_blk		:	std_logic_vector (width_g * eof_d_g - 1 downto 0);	--EOF Block
 
 --RAM
-signal ram_addr_i:	std_logic_vector (width_g * len_d_g - 1 downto 0); 		--RAM Address
+signal ram_addr_i:	std_logic_vector (width_g * len_d_g downto 0); 		--RAM Address
 
 --FSM
 signal cur_st		:	mp_encoder_states; 									--Current state
@@ -150,7 +150,7 @@ signal crc_ack_i	:	std_logic;											--Internal CRC has been acknowledged fro
 begin
 
 	read_addr_internal_proc:
-	read_addr 	<= ram_addr_i; 		--RAM address
+	read_addr 	<= ram_addr_i (width_g * len_d_g - 1 downto 0); 		--RAM address
 	
 	dout_valid_internal_proc:
 	dout_valid	<= dout_valid_i;	--Output data is valid
@@ -306,8 +306,8 @@ begin
 							dout_valid_i<= '1';				--Data is valid
 
 							--Check if all data have been transmitted
-							if ((not len_dec1_g) and (ram_addr_i + '1' = len_data)) 
-									or (len_dec1_g and (ram_addr_i + '1' > len_data)) then --Data has been fully transmitted
+							if ((not len_dec1_g) and (conv_integer(ram_addr_i + '1') = conv_integer(len_data))) 
+									or (len_dec1_g and (conv_integer(ram_addr_i + '1') > conv_integer(len_data))) then --Data has been fully transmitted
 								cur_st 		<= reg_crc_st;		--Switch to next state - register the CRC value from CRC Interface
 								read_addr_en<= '0';				--Address to RAM is not valid
 								ram_addr_i	<= (others => '0'); --To prevent RAM address exceeding
@@ -415,8 +415,8 @@ begin
 			req_crc		<= '0'; 					
 		elsif rising_edge (clk) then
 			if (cur_st = data_st) and 
-			(((not len_dec1_g) and (ram_addr_i + '1' = len_data)) 
-			or (len_dec1_g and (ram_addr_i + '1' > len_data))) then --Data has been fully transmitted
+			(((not len_dec1_g) and (conv_integer(ram_addr_i + '1') = conv_integer(len_data))) 
+			or (len_dec1_g and (conv_integer(ram_addr_i + '1') > conv_integer(len_data)))) then --Data has been fully transmitted
 				req_crc <= '1';				-- Request for CRC
 			else
 				req_crc <= '0';
