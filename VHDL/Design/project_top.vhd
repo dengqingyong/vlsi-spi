@@ -1,6 +1,6 @@
 ------------------------------------------------------------------------------------------------
 -- Entity Name 	:	TOP
--- File Name	:	top.vhd
+-- File Name	:	project_top.vhd
 -- Generated	:	5.11.2011
 -- Author		:	Beeri Schreiber and Omer Shaked
 -- Project		:	SPI Project
@@ -25,7 +25,7 @@ use ieee.std_logic_1164.all;
 use ieee.std_logic_arith.all;
 use ieee.std_logic_unsigned.all;
 
-entity top is
+entity project_top is
 	generic (
 				-- General values
 				reset_polarity_g	:	std_logic 	:= '0';
@@ -85,15 +85,6 @@ entity top is
 				slave_timeout		: 	out std_logic; 	--SPI_SLAVE timeout
 				slave_interrupt		:	out std_logic;		
 				
-				--External RAM Interface - READ and WRITE
-				wr_addr				:	out std_logic_vector (ext_addr_width_g - 1 downto 0); 	--Address for External RAM write
-				rd_addr				:	out std_logic_vector (ext_addr_width_g - 1 downto 0); 	--Address for External RAM read
-				wr_data				:	out std_logic_vector (data_width_g - 1 downto 0);	  	--Data for external RAM write
-				wr_valid			:	out std_logic;										  	--Write data and address are valid
-				rd_valid			:	out std_logic;										  	--Read address is valid
-				ram_data			:	in std_logic_vector (data_width_g - 1 downto 0);	  	--Input data from External RAM
-				ram_valid			:	in std_logic; 	      								  	--Data from external RAM is valid
-				
 				-- Wishbone Interface
 				wbs_cyc_i			: 	in STD_LOGIC;
 				wbs_stb_i 			: 	in STD_LOGIC;
@@ -108,58 +99,36 @@ entity top is
 				wbs_stall_o 		: 	out STD_LOGIC;
 				wbs_dat_o 			: 	out STD_LOGIC_VECTOR(data_width_g-1 downto 0)
 			);
-end entity top;
+end entity project_top;
 
-architecture rtl_top of top is
+architecture rtl_top of project_top is
 
 	-------------------------------	Components	------------------------------------
 
 	component Master_Host
-		generic	(
-				len_dec1_g			:	boolean := true;	--TRUE - Recieved length is decreased by 1 ,to save 1 bit
-															--FALSE - Recieved length is the actual length
-				sof_d_g				:	positive := 1;		--SOF Depth
-				type_d_g			:	positive := 1;		--Type Depth
-				addr_d_g			:	positive := 3;		--Address Depth
-				len_d_g				:	positive := 2;		--Length Depth
-				crc_d_g				:	positive := 1;		--CRC Depth
-				eof_d_g				:	positive := 1;		--EOF Depth
-				sof_val_g			:	natural := 100;		-- (64h) SOF block value. Upper block is MSB
-				eof_val_g			:	natural := 200;		-- (C8h) EOF block value. Upper block is MSB
-				width_g				:	positive := 8;		--Data Width (UART = 8 bits)
-				signed_checksum_g	:	boolean	:= false;	--TRUE to signed checksum, FALSE to unsigned checksum
-				checksum_init_val_g	:	integer	:= 0;		--Note that the initial value is given as an natural number, and not STD_LOGIC_VECTOR
-				checksum_out_width_g:	natural := 8;		--Output CheckSum width
-				reset_polarity_g	:	std_logic	:= '0';									--RESET is active low
-				data_width_g		:	positive	:= 8;									--Data width
-				blen_width_g		:	positive	:= 9;									--Burst length width (maximum 2^9=512Kbyte Burst)
-				addr_bits_g 		: 	POSITIVE := 10;
-				width_in_g 			: 	POSITIVE := 8;
-				addr_width_g		:	positive	:= 10;									--Address width
-				bits_of_slaves_g	:	positive	:= 1;									--Number of slaves bits (determines SPI_SS bus width)
-				reg_addr_width_g	:	positive	:= 8;									--SPI Registers address width
-				reg_din_width_g		:	positive	:= 8									--SPI Registers data width 
-				);
-		port	(
-				clk_i : in STD_LOGIC;
-				rst : in STD_LOGIC;
-				spi_miso : in STD_LOGIC;
-				wbs_cyc_i : in STD_LOGIC;
-				wbs_stb_i : in STD_LOGIC;
-				wbs_tgc_i : in STD_LOGIC;
-				wbs_tgd_i : in STD_LOGIC;
-				wbs_we_i : in STD_LOGIC;
-				wbs_adr_i : in STD_LOGIC_VECTOR(addr_width_g-1 downto 0);
-				wbs_dat_i : in STD_LOGIC_VECTOR(data_width_g-1 downto 0);
-				wbs_tga_i : in STD_LOGIC_VECTOR(blen_width_g-1 downto 0);
-				spi_clk : out STD_LOGIC;
-				spi_mosi : out STD_LOGIC;
-				wbs_ack_o : out STD_LOGIC;
-				wbs_err_o : out STD_LOGIC;
-				wbs_stall_o : out STD_LOGIC;
-				spi_ss : out STD_LOGIC_VECTOR(bits_of_slaves_g-1 downto 0);
-				wbs_dat_o : out STD_LOGIC_VECTOR(data_width_g-1 downto 0)
-				);
+	  generic(
+		   reset_polarity_g		:	std_logic	:= '0'									--RESET is active lo 
+	  );
+	  port(
+		   clk_i : in STD_LOGIC;
+		   rst : in STD_LOGIC;
+		   spi_miso : in STD_LOGIC;
+		   wbs_cyc_i : in STD_LOGIC;
+		   wbs_stb_i : in STD_LOGIC;
+		   wbs_tgc_i : in STD_LOGIC;
+		   wbs_tgd_i : in STD_LOGIC;
+		   wbs_we_i : in STD_LOGIC;
+		   wbs_adr_i : in STD_LOGIC_VECTOR(9 downto 0);
+		   wbs_dat_i : in STD_LOGIC_VECTOR(7 downto 0);
+		   wbs_tga_i : in STD_LOGIC_VECTOR(7 downto 0);
+		   spi_clk : out STD_LOGIC;
+		   spi_mosi : out STD_LOGIC;
+		   wbs_ack_o : out STD_LOGIC;
+		   wbs_err_o : out STD_LOGIC;
+		   wbs_stall_o : out STD_LOGIC;
+		   spi_ss : out STD_LOGIC_VECTOR(0 downto 0);
+		   wbs_dat_o : out STD_LOGIC_VECTOR(7 downto 0)
+	  );
 	end component Master_Host;
 
 	component slave_host
@@ -237,6 +206,25 @@ architecture rtl_top of top is
 				reg_ack				:	out std_logic											--Data to registers has been acknowledged
 				);
 	end component slave_host;
+	
+	component ram_simple
+		generic (
+					reset_polarity_g	:	std_logic 	:= '0';	--'0' - Active Low Reset, '1' Active High Reset
+					width_in_g			:	positive 	:= 8;	--Width of data
+					addr_bits_g			:	positive 	:= 10	--Depth of data	(2^10 = 1024 addresses)
+				);
+		port	(
+					clk			:	in std_logic;									--System clock
+					rst			:	in std_logic;									--System Reset
+					addr_in		:	in std_logic_vector (addr_bits_g - 1 downto 0); --Input address
+					addr_out	:	in std_logic_vector (addr_bits_g - 1 downto 0); --Output address
+					aout_valid	:	in std_logic;									--Output address is valid
+					data_in		:	in std_logic_vector (width_in_g - 1 downto 0);	--Input data
+					din_valid	:	in std_logic; 									--Input data valid
+					data_out	:	out std_logic_vector (width_in_g - 1 downto 0);	--Output data
+					dout_valid	:	out std_logic 									--Output data valid
+				);
+	end component ram_simple;	
 
 
 	-------------------------------------------------
@@ -247,32 +235,21 @@ architecture rtl_top of top is
 	signal spi_miso		:	std_logic;										--Data: Master input, slave output
 	signal spi_ss		:	std_logic_vector(bits_of_slaves_g-1 downto 0);	--Slave Select
 
+	--External RAM Interface - READ and WRITE
+	signal wr_addr		:	std_logic_vector (ext_addr_width_g - 1 downto 0); 	--Address for External RAM write
+	signal rd_addr		:	std_logic_vector (ext_addr_width_g - 1 downto 0); 	--Address for External RAM read
+	signal wr_data		:	std_logic_vector (data_width_g - 1 downto 0);	  	--Data for external RAM write
+	signal wr_valid		:	std_logic;										  	--Write data and address are valid
+	signal rd_valid		:	std_logic;										  	--Read address is valid
+	signal ram_data		:	std_logic_vector (data_width_g - 1 downto 0);	  	--Input data from External RAM
+	signal ram_valid	:	std_logic; 	      								  	--Data from external RAM is valid
+	
+
 begin
 	
 	master_inst	:	master_host	generic map
 								(
-								len_dec1_g				=>	len_dec1_g,		
-								sof_d_g					=>	sof_d_g,
-								type_d_g				=>	type_d_g,
-								addr_d_g				=>	addr_d_g,
-								len_d_g					=>	len_d_g,
-								crc_d_g					=>	crc_d_g,	
-								eof_d_g					=>	eof_d_g,				
-								sof_val_g				=>	sof_val_g,
-								eof_val_g				=>	eof_val_g,
-								width_g					=>	data_width_g,
-								signed_checksum_g		=>	signed_checksum_g,	
-								checksum_init_val_g		=>	checksum_init_val_g,	
-								checksum_out_width_g	=>	checksum_out_width_g,
-								reset_polarity_g		=>	reset_polarity_g,	
-								data_width_g			=>	data_width_g,		
-								blen_width_g			=>	blen_width_g,	
-								addr_bits_g 			=>	addr_bits_g,
-								width_in_g				=>	width_in_g,
-								addr_width_g			=>	addr_width_g,			
-								bits_of_slaves_g		=>	bits_of_slaves_g,		
-								reg_addr_width_g		=>	reg_addr_width_g,		
-								reg_din_width_g			=>	reg_width_g
+								reset_polarity_g		=>	reset_polarity_g
 								)
 								port map
 								(
@@ -347,6 +324,25 @@ begin
 								reg_din_val		=>	'0'
 								);
 
+		ram_inst:  ram_simple
+		generic map (
+					reset_polarity_g	=>	reset_polarity_g,
+					width_in_g			=>	width_in_g,
+					addr_bits_g			=>	addr_bits_g
+				)
+		port map	(
+					clk			=>	clk,
+					rst			=>	rst,
+					addr_in		=>	wr_addr,                               	
+					addr_out	=>	rd_addr,                               	
+					aout_valid	=>	rd_valid,                               	
+					data_in		=>	wr_data,                               	
+					din_valid	=>	wr_valid,                               	
+					data_out	=>	ram_data,                               	
+					dout_valid	=>	ram_valid                               
+				);
+
+								
 end architecture rtl_top;
 
 

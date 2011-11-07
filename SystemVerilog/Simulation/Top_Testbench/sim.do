@@ -1,0 +1,1 @@
+vsim -voptargs=+acc -sv_lib ../../../uvm-1.1/win32/uvm_dpi work.top
