@@ -116,6 +116,9 @@ type fsm_states is
 						reg_done_st,	--Expected : spi_reg_ack or spi_reg_err
 						rx_prep_ram_st,	--Prepare RX: Write to RAM the required burst length
 						rx_cmd_st,		--Transmit Read command
+						rx_enc_done_st,	--Encoder is done (Read Command)
+						rx_asrt_bsy_st,	--Wait for SPI_BUSY assertion (Start of Read Command)
+						rx_neg_bsy_st,	--Wait for SPI_BUSY Negation (End of Read Command)
 						rx_wait_data_st,--Wait until data from SPI is ready for reading (in RAM)
 						neg_stall_st,	--Negate STALL
 						tx_data_st,		--Transfer data from WBS I/F to M.P. Encoder
@@ -189,13 +192,15 @@ begin
 	if (rst = reset_polarity_g) then
 		wbs_stall_o	<=	'1';
 	elsif rising_edge (clk_i) then
-		if (cur_st = end_tx_st) 
+		if (cur_st = rx_data_st)
+		or (cur_st = tx_data_st)
+		or (cur_st = neg_stall_st) then
+			wbs_stall_o	<=	'0';
+		elsif (cur_st = end_tx_st) 
 		or (cur_st = end_rx_st) 
 		or (cur_st = reg_done_st) 
 		or (spi_busy = '1') then --idle_st is not required, since it will already be there at '1'
 			wbs_stall_o	<=	'1';
-		elsif (cur_st = neg_stall_st) then
-			wbs_stall_o	<=	'0';
 		end if;
 	end if;
 end process wbs_stall_o_proc;
@@ -353,7 +358,28 @@ begin
 				end if;
 				
 			when rx_cmd_st	=>
-				cur_st	<=	rx_wait_data_st;
+				cur_st	<=	rx_enc_done_st;
+				
+			when rx_enc_done_st	=>
+				if (mp_enc_done = '1') then
+					cur_st	<=	rx_asrt_bsy_st;
+				else
+					cur_st	<=	cur_st;
+				end if;
+			
+			when rx_asrt_bsy_st =>
+				if (spi_busy = '1') then
+					cur_st	<=	rx_neg_bsy_st;
+				else
+					cur_st	<=	cur_st;
+				end if;
+
+				when rx_neg_bsy_st =>
+				if (spi_busy = '0') then
+					cur_st	<=	rx_wait_data_st;
+				else
+					cur_st	<=	cur_st;
+				end if;
 				
 			when rx_wait_data_st =>
 				if (mp_dec_done = '1') then
@@ -395,10 +421,10 @@ begin
 			when rx_data_st	=>
 				if (rx_cnt (blen_width_g) = '1') then	--End of burst
 					cur_st	<=	end_rx_st;
-				elsif (ram_dec_dout_val = '0') then
-					cur_st	<=	end_rx_st;
-					report "Time: " & time'image (now) & ", WBS_SPI >> rx_data_st: Data Valid from Decoder RAM has not been received"
-					severity error;
+				-- elsif (ram_dec_dout_val = '0') then
+					-- cur_st	<=	end_rx_st;
+					-- report "Time: " & time'image (now) & ", WBS_SPI >> rx_data_st: Data Valid from Decoder RAM has not been received"
+					-- severity error;
 				elsif (wbs_cyc_i = '0') then	--Cycle has been ended before all data has been received
 					cur_st	<=	end_rx_st;
 					report "Time: " & time'image (now) & ", WBS_SPI >> rx_data_st: Cycle has been closed before all data has been recieved"
@@ -454,6 +480,11 @@ begin
 		    mp_enc_type_reg		<=	(others => '0');
 		elsif (cur_st = rx_cmd_st) then
 			mp_enc_reg_ready	<=	'1';
+		    if (blen_width_g > data_width_g) then
+				mp_enc_len_reg	<=	conv_std_logic_vector ((blen_width_g / data_width_g) - 1, blen_width_g);
+			else
+				mp_enc_len_reg	<=	(others => '0');
+			end if;
 		    mp_enc_type_reg		<=	type_rd_c;
 		    mp_enc_type_reg(4)	<=	wbs_tgd_i; --wbs_tgd: write/read to / from SPI Registers / data
 		
@@ -474,11 +505,11 @@ begin
 	if (rst = reset_polarity_g) then
 		wbs_err_o	<=	'0';
 	elsif rising_edge(clk_i) then
-		if (cur_st = rx_data_st) and (ram_dec_dout_val = '0') then
-			wbs_err_o	<=	'1';
-			report "Time: " & time'image (now) & ", WBS_SPI >> tx_data_state: Decoder RAM data is not valid."
-			severity error;
-		elsif (cur_st = rx_wait_data_st) then
+		-- if (cur_st = rx_data_st) and (ram_dec_dout_val = '0') then
+			-- wbs_err_o	<=	'1';
+			-- report "Time: " & time'image (now) & ", WBS_SPI >> rx_data_st: Decoder RAM data is not valid."
+			-- severity error;
+		if (cur_st = rx_wait_data_st) then
 			if (mp_dec_crc_err = '1') or (mp_dec_eof_err = '1') then
 				wbs_err_o		<=	'1';
 				report "Time: " & time'image (now) & ", WBS_SPI >> rx_wait_data_st: CRC Error / EOF Error detected."
@@ -513,8 +544,8 @@ begin
 	if (rst = reset_polarity_g) then
 		int_we	<=	'1';
 	elsif rising_edge(clk_i) then
-		if (cur_st = idle_st) and (wbs_cyc_i = '1') then
-			int_we	<=	wbs_we_i;
+		if (cur_st = rx_wait_data_st) then
+			int_we	<=	'0';
 		elsif (cur_st = end_rx_st) then
 			int_we	<=	'1';
 		else
@@ -563,19 +594,19 @@ variable blen_val_v		:	std_logic_vector (blen_width_g - 1 downto 0);
 begin
 	if (rst = reset_polarity_g) then
 		rx_blen		<=	(others => '0');
-		blen_val_v	:= 	(others => '0');
+--		blen_val_v	:= 	(others => '0');
 	
 	elsif rising_edge(clk_i) then
 		if (cur_st = idle_st) and (wbs_cyc_i = '1') then
 			rx_blen	<=	wbs_tga_i;
-		elsif (cur_st = rx_prep_ram_st) then
-			blen_val_v	:= rx_blen;
-			for idx in 1 to data_width_g loop	--Shift Right, data_width bits
-				blen_val_v (blen_width_g - 2 downto 0)	:=	blen_val_v (blen_width_g - 1 downto 1);
-			end loop;
-			rx_blen	<=	blen_val_v;
-		else
-			rx_blen	<=	rx_blen;
+		-- elsif (cur_st = rx_prep_ram_st) then
+			-- blen_val_v	:= rx_blen;
+			-- for idx in 1 to data_width_g loop	--Shift Right, data_width bits
+				-- blen_val_v (blen_width_g - 2 downto 0)	:=	blen_val_v (blen_width_g - 1 downto 1);
+			-- end loop;
+			-- rx_blen	<=	blen_val_v;
+		-- else
+			-- rx_blen	<=	rx_blen;
 		end if;
 	end if;
 end process rx_blen_proc;

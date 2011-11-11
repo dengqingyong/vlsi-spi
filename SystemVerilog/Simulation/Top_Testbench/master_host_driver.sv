@@ -56,7 +56,7 @@ task get_and_drive();
 			for (idx = req.init_addr ; idx <= req.length && idx < 2**addr_width_g ; idx++)
 				req.data [idx] = int_ram.ram [idx];	//Prepare golden packet, from RAM
 			//TODO: Drvr2Sb_port.write(req);
-			receive (req.init_addr, req.length - 1);
+			receive (req.init_addr, req.length);
 		end
 		@(posedge vif.clk);
 		seq_item_port.item_done();
@@ -177,7 +177,7 @@ endtask : get_and_drive
 		logic [addr_width_g - 1 : 0] 	addr = pkt.init_addr;
         pkt_len = pkt.length;
 		//`uvm_info(tID,$sformatf("Driving [subphase is %0s] item sent is: \n%0s",pkt.get_name(),pkt.sprint()),UVM_LOW)
-        `uvm_info(tID,$sformatf("Driving Packet, width of %d", pkt_len),UVM_LOW)
+        `uvm_info(tID,$sformatf("Driving Packet, width of %0h(hex) from address %0h(hex)", pkt_len, addr),UVM_LOW)
 		vif.wbm_tgc_o	<=	0;	//Write SPI Data
 		vif.wbm_tga_o	<=	pkt_len;
 		vif.wbm_tgd_o	<=	0;
