@@ -21,7 +21,7 @@ use IEEE.math_real.all;
 
 entity Master_Host is
   generic(
-       reset_polarity_g		:	std_logic	:= '0'									--RESET is active lo 
+       reset_polarity_g		:	std_logic	:= '0'	--RESET is active low
   );
   port(
        clk_i : in STD_LOGIC;
@@ -304,6 +304,7 @@ signal mp_dec_eof_err : STD_LOGIC;
 signal mp_enc_done : STD_LOGIC;
 signal mp_enc_reg_ready : STD_LOGIC;
 signal fifo_din_valid_int : STD_LOGIC;
+signal fifo_empty_int : STD_LOGIC;
 signal ram_dec_aout_val : STD_LOGIC;
 signal ram_dec_din_valid : STD_LOGIC;
 signal ram_dec_dout_val : STD_LOGIC;
@@ -400,8 +401,13 @@ wbs_spi_inst : wbs_spi
        wbs_we_i => wbs_we_i
   );
 
+fifo_din_val_int_proc:
 fifo_din_valid_int <= fifo_dout_val when (spi_we = '1')
 						else '1';
+
+fifo_empty_int_proc:
+fifo_empty_int <= fifo_empty when (spi_we = '1')
+						else '0';
 
 mp_dec_inst : mp_dec
   generic map (len_d_g => 1)
@@ -463,7 +469,7 @@ spi_master_inst : spi_master
        dout_valid => spi_dout_valid,
        fifo_din => fifo_din( 7 downto 0 ),
        fifo_din_valid => fifo_din_valid_int,
-       fifo_empty => fifo_empty,
+       fifo_empty => fifo_empty_int,
        fifo_req_data => fifo_req_data,
        reg_ack => spi_reg_ack,
        reg_addr => spi_reg_addr( 7 downto 0 ),
