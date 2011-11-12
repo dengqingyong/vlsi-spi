@@ -1,5 +1,6 @@
 `include "Internal_Ram.sv"
 `include "packet.sv"
+`include "master_host_scoreboard.sv"
 `include "master_host_if.sv"
 `include "master_host_sequencer.sv"
 `include "master_host_monitor.sv"

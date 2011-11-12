@@ -3,6 +3,9 @@ parameter addr_width_g = 10;
 Internal_Ram int_ram;
 string tID;
 virtual interface mh_intf vif;
+//TLM port for scoreboard communication 
+uvm_analysis_port #(packet) sb_rx;
+uvm_analysis_port #(packet) sb_ram;
 
 `uvm_component_utils_begin(master_host_driver)
   `uvm_field_object(req, UVM_ALL_ON)
@@ -12,6 +15,8 @@ function new(string name, uvm_component parent);
   super.new(name,parent);
   tID=get_type_name();
   tID=tID.toupper();
+  sb_rx = new ("sb_rx", this);
+  sb_ram = new ("sb_ram", this);
 endfunction : new
 
 virtual function void build_phase(uvm_phase phase);
@@ -48,14 +53,14 @@ task get_and_drive();
 		@(posedge vif.clk);
 		if (req.wr_rd)	//Write Burst
 		begin
-			for (idx = req.init_addr ; idx <= req.length && idx < 2**addr_width_g ; idx++)
-				int_ram.ram [idx] = req.data [idx];	//Write transmitted data to RAM
+			for (idx = 0 ; (idx <= req.length) && (idx + req.init_addr < 2**addr_width_g); idx++)
+				int_ram.ram [idx + req.init_addr] = req.data [idx];	//Write transmitted data to RAM
 			drive(req);
 		end
 		else begin		//Read Burst
-			for (idx = req.init_addr ; idx <= req.length && idx < 2**addr_width_g ; idx++)
-				req.data [idx] = int_ram.ram [idx];	//Prepare golden packet, from RAM
-			//TODO: Drvr2Sb_port.write(req);
+			for (idx = 0 ; (idx <= req.length) && (idx + req.init_addr < 2**addr_width_g); idx++)
+				req.data [idx] = int_ram.ram [idx + req.init_addr];	//Prepare golden packet, from RAM
+			sb_ram.write(req);
 			receive (req.init_addr, req.length);
 		end
 		@(posedge vif.clk);
@@ -220,7 +225,10 @@ endtask : get_and_drive
 		begin
 			vif.wbm_adr_o	<=	addr;
 			if (vif.wbm_stall_i) 				//STALL is activated
+			begin
 				@(negedge vif.wbm_stall_i);	//Wait until SPI Master is Ready
+				@(posedge vif.clk);
+			end
 			@(posedge vif.clk);
 			bytes[idx]	=	vif.wbm_dat_i;
 			addr++;
@@ -234,9 +242,11 @@ endtask : get_and_drive
         pkt.data.delete();
         pkt.data = new[burst_len + 1];
 		pkt.length = burst_len;
+		pkt.init_addr = init_addr;
+		pkt.wr_rd = 1'b0;
         foreach(bytes[i])
-          pkt.data[i] = bytes[i];
-		//TODO: Rcvr2Sb_port.write(pkt);
+		  pkt.data[i] = bytes[i];
+		sb_rx.write(pkt);
    endtask : receive
 
 endclass : master_host_driver 

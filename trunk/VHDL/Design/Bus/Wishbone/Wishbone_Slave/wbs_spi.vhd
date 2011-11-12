@@ -120,6 +120,7 @@ type fsm_states is
 						rx_asrt_bsy_st,	--Wait for SPI_BUSY assertion (Start of Read Command)
 						rx_neg_bsy_st,	--Wait for SPI_BUSY Negation (End of Read Command)
 						rx_wait_data_st,--Wait until data from SPI is ready for reading (in RAM)
+						neg_delay_st,	--One clock delay before negating STALL
 						neg_stall_st,	--Negate STALL
 						tx_data_st,		--Transfer data from WBS I/F to M.P. Encoder
 						rx_data_st,		--Receive data from WBS I/F from M.P. Decoder
@@ -140,9 +141,14 @@ signal int_cyc_d1		:	std_logic;										--Internal WBS_CYC (with one clock dela
 signal int_ram_enc_addr	:	std_logic_vector (blen_width_g - 1 downto 0);	--Internal ram_enc_addr
 signal int_ram_dec_addr	:	std_logic_vector (blen_width_g - 1 downto 0);	--Internal ram_dec_addr
 signal int_wbs_ack		:	std_logic;										--Internal WBS_ACK_O
+signal ram_enc_din_val_i:	std_logic;										--Internal RAM ENC DIN VAL
 
 ----------------------------------	Implementation	---------------------------
 begin
+
+ram_enc_din_val_i_proc:
+ram_enc_din_val	<=	ram_enc_din_val_i when (cur_st /= end_tx_st)
+					else '0';
 
 --SPI Write Enable
 spi_we_proc:
@@ -261,7 +267,7 @@ begin
 		int_ram_enc_addr	<=	(others => '1');	--i.e: x"FF" + '1' = x"00", which is first address
 		ram_enc_din			<=	(others => '0');
 		ram_val_v			:=	(others => '0');
-		ram_enc_din_val		<=	'0';
+		ram_enc_din_val_i	<=	'0';
 	
 	elsif rising_edge (clk_i) then
 		if (cur_st = rx_prep_ram_st) then	--Prepare Read
@@ -273,15 +279,15 @@ begin
 				ram_val_v (data_width_g - 1 downto 0) := rx_blen (data_width_g - 1 downto 0);
 			end if;
 			ram_enc_din			<=	ram_val_v;
-			ram_enc_din_val		<=	'1';
+			ram_enc_din_val_i	<=	'1';
 		elsif (cur_st = tx_data_st) then		--TX
 			int_ram_enc_addr	<=	int_ram_enc_addr + '1';
 			ram_enc_din			<=	wbs_dat_i;
-			ram_enc_din_val		<=	'1';
+			ram_enc_din_val_i	<=	'1';
 		else
 			int_ram_enc_addr	<=	(others => '1');
 			ram_enc_din			<=	(others => '0');
-			ram_enc_din_val		<=	'0';
+			ram_enc_din_val_i	<=	'0';
 		end if;
 	end if;
 end process ram_enc_proc;
@@ -294,7 +300,7 @@ begin
 		int_ram_dec_addr	<=	(others => '1');	--i.e: x"FF" since x"FF" + '1' is first address
 	
 	elsif rising_edge(clk_i) then
-		if (cur_st = rx_data_st) then
+		if (cur_st = rx_data_st) or (cur_st = neg_stall_st) then
 			ram_dec_aout_val	<=	'1';
 			int_ram_dec_addr	<=	int_ram_dec_addr + '1';
 		else
@@ -384,7 +390,7 @@ begin
 			when rx_wait_data_st =>
 				if (mp_dec_done = '1') then
 					if (mp_dec_crc_err = '0') then	--No CRC Error
-						cur_st	<=	neg_stall_st;
+						cur_st	<=	neg_delay_st;
 					else		--CRC Error
 						cur_st	<=	end_rx_st;
 						report "Time: " & time'image (now) & ", WBS_SPI >> tx_wait_data_st: CRC Error has been detected during reading. Terminating transaction."
@@ -397,6 +403,9 @@ begin
 				else
 					cur_st		<=	cur_st;
 				end if;
+			
+			when neg_delay_st	=>
+				cur_st	<=	neg_stall_st;
 			
 			when neg_stall_st	=>
 				if (wbs_tgc_i = '1') then		--Write to SPI Registers
