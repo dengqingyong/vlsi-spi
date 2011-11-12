@@ -19,7 +19,7 @@ endfunction : build_phase
 
 task run_phase(uvm_phase phase);
   `uvm_info(tID,"RUNNING:",UVM_MEDIUM)
-  collect_data();
+  //collect_data();
 endtask : run_phase
 
 /*

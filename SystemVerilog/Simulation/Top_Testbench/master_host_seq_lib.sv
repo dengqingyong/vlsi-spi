@@ -56,7 +56,6 @@ task body();
 	`uvm_info(tID,"Executing Read sequence",UVM_MEDIUM)
 	`uvm_do_with(req, {length == 8'hFF; wr_rd == 0; init_addr == 10'd0;} )
 	`uvm_info(tID,"End Read",UVM_MEDIUM)
-	//`uvm_do_with(req, {length == 8'hFF; wr_rd == 1; init_addr == 10'd0;} )
 endtask : body
 endclass : master_host_seq_full_burst 
 
