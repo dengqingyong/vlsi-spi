@@ -408,7 +408,7 @@ begin
 				cur_st	<=	neg_stall_st;
 			
 			when neg_stall_st	=>
-				if (wbs_tgc_i = '1') then		--Write to SPI Registers
+				if (wbs_tgc_i = '1') and (wbs_tgd_i = '0') then		--Write to SPI Registers
 					cur_st	<=	reg_wr_st;
 				elsif (int_we = '1') then			--Writing
 					cur_st	<=	tx_data_st;
