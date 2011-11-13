@@ -21,7 +21,7 @@ class master_host_env extends uvm_env;
 		// Connect slave0 monitor to scoreboard
 		agent0.driver.sb_rx.connect(scoreboard0.sb_rx);
 		agent0.driver.sb_ram.connect(scoreboard0.sb_ram);
-		agent0.monitor.sb_post.connect(scoreboard0.sb_rx);
+		agent0.driver.sb_rx.connect(agent0.monitor.sb_post);
 	endfunction : connect_phase
 
 	

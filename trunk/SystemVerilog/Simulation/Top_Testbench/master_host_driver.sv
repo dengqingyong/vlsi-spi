@@ -95,7 +95,7 @@ endtask : get_and_drive
     virtual task cfg_dut(
 							logic [7:0] clk_div_reg = 2,	//Clock divide factor
 							logic [7:0] cphapol_reg = 0,	//CPOL, CPHA value
-							string who_config = "master"					//Who to config: "master", "slave", "both"
+							string who_config = "both"		//Who to config: "master", "slave", "both"
 						);
         `uvm_info(tID,$sformatf("Start of cfg_dut method"),UVM_LOW)
         @(posedge vif.clk);

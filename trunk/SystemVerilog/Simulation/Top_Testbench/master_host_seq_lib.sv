@@ -33,7 +33,7 @@ endfunction : new
 
 task body();
 	`uvm_info(tID,"SEQ1 sequence RUNNING",UVM_MEDIUM)
-	`uvm_do_with(req, { init_addr + data.size < 2**10; } )
+	`uvm_do(req)
 endtask : body
 endclass : master_host_seq1 
 
@@ -48,16 +48,27 @@ endfunction : new
 
 task body();
 	`uvm_info(tID,"FULL BURST sequence RUNNING",UVM_MEDIUM)
-	`uvm_do_with(req, {length == 8'hFF; wr_rd == 1; init_addr == 10'd0;} )
-	`uvm_do_with(req, {length == 8'hFF; wr_rd == 1; init_addr == 10'd256;} )
-	`uvm_do_with(req, {length == 8'hFF; wr_rd == 1; init_addr == 10'd512;} )
-	`uvm_do_with(req, {length == 8'hFF; wr_rd == 1; init_addr == 10'd768;} )
+	for (int idx = 0 ; idx < 4 ; idx++)
+		`uvm_do_with(req, {length == 8'hFF; wr_rd == 1; init_addr == idx*256;} )
 	`uvm_info(tID,"END FULL BURST sequence",UVM_MEDIUM)
-	`uvm_info(tID,"Executing Read sequence",UVM_MEDIUM)
-	`uvm_do_with(req, {length == 8'hFF; wr_rd == 0; init_addr == 10'd0;} )
-	`uvm_info(tID,"End Read",UVM_MEDIUM)
 endtask : body
 endclass : master_host_seq_full_burst 
+
+//Simple Read
+class master_host_read_burst extends master_host_base_seq;
+//"req" built-in uvm_sequence class member for sequence_item
+
+`uvm_object_utils(master_host_read_burst)
+function new(string name = "master_host_read_burst");
+   super.new(name);
+endfunction : new
+
+task body();
+	`uvm_info(tID,"Read sequence RUNNING",UVM_MEDIUM)
+	`uvm_do_with(req, {wr_rd == 0;} )
+	`uvm_info(tID,"End Read",UVM_MEDIUM)
+endtask : body
+endclass : master_host_read_burst 
 
 
 // //sequence which calls another sequence (sub_sequence)

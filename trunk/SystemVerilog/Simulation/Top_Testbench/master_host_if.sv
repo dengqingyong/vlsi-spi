@@ -16,4 +16,12 @@ interface mh_intf(input logic clk);
 	logic wbm_ack_i				;				//Acknowledge
 	logic wbm_err_i				;				//Error
 	
+	always @(posedge clk)
+	begin
+	// Address must not be X or Z 
+	assertAddrUnknown:assert property ((wbm_cyc_o |-> !$isunknown(wbm_adr_o)))
+					  else
+						`uvm_error("MasterHostIF", "ERR_ADDR_XZ\n Address went to X or Z");
+	end
+	
 endinterface : mh_intf
