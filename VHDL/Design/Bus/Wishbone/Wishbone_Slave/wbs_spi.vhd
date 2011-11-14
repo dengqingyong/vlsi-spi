@@ -319,7 +319,8 @@ begin
 	elsif rising_edge(clk_i) then
 		case cur_st is
 			when idle_st	=>
-				if (wbs_cyc_i = '1') then				--Start of Wishbone Cycle
+				if (wbs_cyc_i = '1') 					--Start of Wishbone Cycle
+				and (spi_busy = '0') then				--SPI is not in the middle of a transaction
 					if (wbs_tgc_i = '0') then			--SPI transmission
 						if (wbs_we_i = '1') then
 							cur_st	<=	neg_stall_st;	--Negate STALL

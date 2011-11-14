@@ -39,7 +39,7 @@ entity project_top is
 				dval_cpol_g			:	std_logic	:= '0';
 				first_dat_lsb		:	boolean		:= true;
 				default_dat_g		:	integer		:= 0;
-				spi_timeout_g		:	std_logic_vector (10 downto 0)	:=	"00000100000";
+				spi_timeout_g		:	std_logic_vector (10 downto 0)	:=	"00100000010";
 				timeout_en_g		:	std_logic	:= '1';	
 				dval_miso_g			:	std_logic	:= '0';
 				-- FIFO
