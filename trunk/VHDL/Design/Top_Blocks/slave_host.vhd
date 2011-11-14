@@ -362,7 +362,7 @@ architecture rtl_slave_host of slave_host is
 
 	------------------  CONSTANTS ------------------
 	constant read_type	:	std_logic_vector (reg_width_g - 1 downto 0)	:= x"02";	--Read from external RAM
-	constant conf_type	:	std_logic_vector (reg_width_g - 1 downto 0)	:= x"17";   --Write to configuration register
+	constant conf_type	:	positive	:= 4;   									--Write to configuration register when TYPE_REG(4) = '1'
 	constant zero_addr 	:	std_logic_vector (int_addr_width_g - 1 downto 0) := (others => '0');
 	
 	-------------------------------------------------
@@ -799,7 +799,7 @@ begin
 			if (cur_st = rd_ram_st) then 	-- Need to read data from ram
 				if (type_reg_q = read_type) and (dec_ram_dout_val = '1') then
 					burst_reg	<=	dec_ram_dout;
-				elsif (type_reg_q = conf_type) and (dec_ram_dout_val = '1') then
+				elsif (type_reg_q(conf_type) = '1') and (dec_ram_dout_val = '1') then
 					conf_reg	<=	dec_ram_dout;
 				end if;
 			end if;
@@ -832,7 +832,7 @@ begin
 						if (type_reg_d = read_type) then -- New read request
 							cur_st			<=	rd_ram_st;
 							
-						elsif (type_reg_d = conf_type) then -- New write to cinfiguration register
+						elsif (type_reg_d(conf_type) = '1') then -- New write to cinfiguration register
 							dec_rd_sel 		<= 	'1';		-- Slave host reads from DEC_RAM
 							en_host_read	<=	'1';		-- Read value from dec_ram
 							cur_st			<=	rd_ram_st;
@@ -844,7 +844,7 @@ begin
 				when rd_ram_st	=>
 					if (type_reg_q = read_type) and (dec_ram_dout_val = '1') then
 						cur_st		<=	read_st;
-					elsif (type_reg_q = conf_type) and (dec_ram_dout_val = '1') then
+					elsif (type_reg_q(conf_type) = '1') and (dec_ram_dout_val = '1') then
 						cur_st		<=	conf_st;
 					end if;
 				
@@ -860,7 +860,7 @@ begin
 				when wait_st	=>
 					if (type_reg_q = read_type) and (mp_enc_done = '1') then --Finished building returning message
 						cur_st	<=	idle_st;
-					elsif (type_reg_q = conf_type) and (int_reg_ack = '1') then --Finished writing new configuration values
+					elsif (type_reg_q(conf_type) = '1') and (int_reg_ack = '1') then --Finished writing new configuration values
 						cur_st	<=	idle_st;
 					end if;
 					

@@ -51,18 +51,21 @@ task get_and_drive();
     begin
 		seq_item_port.get_next_item(req);
 		@(posedge vif.clk);
-		if (req.wr_rd)	//Write Burst
+		if (req.wr_rd == 1)	//Write Burst
 		begin
 			for (idx = 0 ; (idx <= req.length) && (idx + req.init_addr < 2**addr_width_g); idx++)
 				int_ram.ram [idx + req.init_addr] = req.data [idx];	//Write transmitted data to RAM
 			drive(req);
 		end
-		else begin		//Read Burst
+		else if (req.wr_rd == 0) begin		//Read Burst
 			for (idx = 0 ; (idx <= req.length) && (idx + req.init_addr < 2**addr_width_g); idx++)
 				req.data [idx] = int_ram.ram [idx + req.init_addr];	//Prepare golden packet, from RAM
 			sb_ram.write(req);
 			receive (req.init_addr, req.length);
 		end
+		else if (req.wr_rd == 2)//Config
+			cfg_dut (req.clk_reg, req.conf_reg, "both");
+		assert (req.wr_rd inside {0, 1, 2});
 		@(posedge vif.clk);
 		seq_item_port.item_done();
     end
@@ -93,12 +96,33 @@ endtask : get_and_drive
     endtask : reset_dut
    
     virtual task cfg_dut(
-							logic [7:0] clk_div_reg = 2,	//Clock divide factor
-							logic [7:0] cphapol_reg = 0,	//CPOL, CPHA value
+							logic [7:0] clk_div_reg = 8'd2,	//Clock divide factor
+							logic [7:0] cphapol_reg = 8'd0,	//CPOL, CPHA value
 							string who_config = "both"		//Who to config: "master", "slave", "both"
 						);
         `uvm_info(tID,$sformatf("Start of cfg_dut method"),UVM_LOW)
         @(posedge vif.clk);
+		//Config SPI Slave
+		if (who_config == "both" || who_config == "slave")
+		begin
+			vif.wbm_tgc_o	<=	1;	//Write to SPI Slave Registers
+			vif.wbm_tga_o	<=	0;
+			vif.wbm_tgd_o	<=	1;
+			vif.wbm_we_o	<=	1;	//Write
+			//Config Clock Divide Reg
+			vif.wbm_cyc_o	<=	1;
+			vif.wbm_stb_o	<=	1;
+			vif.wbm_adr_o	<=	'{default:0};	//Write CPHACPOL
+			vif.wbm_dat_o	<=	cphapol_reg;
+			@(negedge vif.wbm_stall_i);		//Wait until SPI Slave is Ready
+			@(posedge vif.clk);
+			vif.wbm_stb_o	<=	0;
+			@(negedge vif.wbm_ack_i);			//Wait until SPI Slave acknowledge
+			vif.wbm_cyc_o	<=	0;
+			@(posedge vif.clk);
+			//TODO: Add assertion for WBM_ERR, and WBM_ACK for 1 cycle only
+		end
+
 		//Config SPI Master
 		if (who_config == "both" || who_config == "master")
 		begin
@@ -111,7 +135,7 @@ endtask : get_and_drive
 			vif.wbm_stb_o	<=	1;
 			vif.wbm_adr_o	<=	'{default:0};	//Write Clock Divide Factor Registers
 			vif.wbm_dat_o	<=	clk_div_reg;
-			@(negedge vif.wbm_stall_i);		//Wait until SPI Master is Ready
+			@(negedge vif.wbm_stall_i);			//Wait until SPI Master is Ready
 			@(posedge vif.clk);
 			vif.wbm_stb_o	<=	0;
 			@(negedge vif.wbm_ack_i);			//Wait until SPI Master acknowledge
@@ -122,7 +146,7 @@ endtask : get_and_drive
 			//Config CPOL, CPHA Reg.
 			vif.wbm_cyc_o	<=	1;
 			vif.wbm_stb_o	<=	1;
-			vif.wbm_adr_o	<=	1;			//Write CPOL, CPHA
+			vif.wbm_adr_o	<=	10'd1;			//Write CPOL, CPHA
 			vif.wbm_dat_o	<=	cphapol_reg;
 			@(negedge vif.wbm_stall_i);	//Wait until SPI Master is Ready
 			@(posedge vif.clk);
@@ -133,40 +157,6 @@ endtask : get_and_drive
 			//TODO: Add assertion for WBM_ERR, and WBM_ACK for 1 cycle only
 		end
 
-		//Config SPI Slave
-		if (who_config == "both" || who_config == "slave")
-		begin
-			vif.wbm_tgc_o	<=	1;	//Write to SPI Slave Registers
-			vif.wbm_tga_o	<=	0;
-			vif.wbm_tgd_o	<=	1;
-			vif.wbm_we_o	<=	1;	//Write
-			//Config Clock Divide Reg
-			vif.wbm_cyc_o	<=	1;
-			vif.wbm_stb_o	<=	1;
-			vif.wbm_adr_o	<=	'{default:0};	//Write Clock Divide Factor Registers
-			vif.wbm_dat_o	<=	clk_div_reg;
-			@(negedge vif.wbm_stall_i);		//Wait until SPI Slave is Ready
-			@(posedge vif.clk);
-			vif.wbm_stb_o	<=	0;
-			@(negedge vif.wbm_ack_i);			//Wait until SPI Slave acknowledge
-			vif.wbm_cyc_o	<=	0;
-			@(posedge vif.clk);
-			//TODO: Add assertion for WBM_ERR, and WBM_ACK for 1 cycle only
-
-			//Config CPOL, CPHA Reg.
-			vif.wbm_cyc_o	<=	1;
-			vif.wbm_stb_o	<=	1;
-			vif.wbm_adr_o	<=	1;			//Write CPOL, CPHA
-			vif.wbm_dat_o	<=	cphapol_reg;
-			@(negedge vif.wbm_stall_i);	//Wait until SPI Slave is Ready
-			@(posedge vif.clk);
-			vif.wbm_stb_o	<=	0;
-			@(negedge vif.wbm_ack_i);		//Wait until SPI Master acknowledge
-			vif.wbm_cyc_o	<=	0;
-			vif.wbm_tgd_o	<=	0;
-			@(posedge vif.clk);
-			//TODO: Add assertion for WBM_ERR, and WBM_ACK for 1 cycle only
-		end
 		assert (who_config == "both" || who_config == "master" || who_config == "slave") 
 		else
 			`uvm_info(tID,$sformatf("cfg_dut: Config master / slave / both only!!!"),UVM_NONE)
@@ -244,6 +234,8 @@ endtask : get_and_drive
 		pkt.length = burst_len;
 		pkt.init_addr = init_addr;
 		pkt.wr_rd = 1'b0;
+		pkt.conf_reg = 8'd0;
+		pkt.clk_reg = 8'd2;
         foreach(bytes[i])
 		  pkt.data[i] = bytes[i];
 		sb_rx.write(pkt);

@@ -25,12 +25,24 @@ endtask : run_phase
 covergroup cov_trans @ e_trans_collected;
   length: coverpoint trans.length
    { 
-	bins MIN[]     = {0};
-    bins MAX[]     = {255};
-	bins others[]	= default;
+	bins MIN[]     	= {0};
+    bins MAX[]     	= {255};
+	bins others[]	= {[1:254]};
    }
    
    init_addr: coverpoint trans.init_addr;
+
+   div_factor: coverpoint trans.clk_reg
+   {
+	bins in_range[] = {[2:$]};
+	bins others[]	= default;
+   }
+
+   cpha_cpol: coverpoint trans.conf_reg
+   {
+	bins in_range[] = {[0:3]};
+	bins others[]	= default;
+   }
    
    lenXaddr: cross length, init_addr;
 endgroup

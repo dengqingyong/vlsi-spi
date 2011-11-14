@@ -1,1 +1,1 @@
-vlog +incdir+C:/questasim_10.0c/UVM1-1/uvm-1.1/src top.sv
+vlog +incdir+C:/questasim_10.0c/verilog_src/uvm-1.1/src top.sv

@@ -64,9 +64,9 @@ virtual function void build_phase(uvm_phase phase);
   `uvm_info(get_type_name(),"Build Phase of TEST1",UVM_LOW)
   //configure sequences for "reset_phase" and "main_phase" - will run sequentially in appropriate phase
   //uvm_config_db#(uvm_object_wrapper)::set(this, "tb0.master_host0.agent0.sequencer.reset_phase","default_sequence",master_host_reset_seq::type_id::get());
-  uvm_config_db#(uvm_object_wrapper)::set(this, "tb0.master_host0.agent0.sequencer.main_phase","default_sequence",master_host_seq_full_burst::type_id::get());
+  uvm_config_db#(uvm_object_wrapper)::set(this, "tb0.master_host0.agent0.sequencer.main_phase","default_sequence",master_host_ex_seq::type_id::get());
   uvm_config_db#(int)::set(this,"tb0.master_host0.agent0","is_active",UVM_ACTIVE);
-  uvm_config_db#(int)::set(this, "tb0.master_host0.agent0.sequencer", "count", 10);
+  //uvm_config_db#(int)::set(this, "tb0.master_host0.agent0.sequencer", "count", 10);
   //NEED to set configurations before calling super.build_phase() which creates the verification hierarchy "tb0"
   super.build_phase(phase);
 endfunction : build_phase
