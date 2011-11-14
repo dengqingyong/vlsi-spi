@@ -38,12 +38,6 @@ covergroup cov_trans @ e_trans_collected;
 	bins others[]	= default;
    }
 
-   cpha_cpol: coverpoint trans.conf_reg
-   {
-	bins in_range[] = {[0:3]};
-	bins others[]	= default;
-   }
-   
    lenXaddr: cross length, init_addr;
 endgroup
 
