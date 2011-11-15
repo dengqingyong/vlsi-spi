@@ -40,7 +40,7 @@ entity project_top is
 				first_dat_lsb		:	boolean		:= true;
 				default_dat_g		:	integer		:= 0;
 				spi_timeout_g		:	std_logic_vector (10 downto 0)	:=	"00100000010";
-				timeout_en_g		:	std_logic	:= '1';	
+				timeout_en_g		:	std_logic	:= '0';	
 				dval_miso_g			:	std_logic	:= '0';
 				-- FIFO
 				depth_g 			: 	positive	:= 9;	-- Maximum elements in FIFO
