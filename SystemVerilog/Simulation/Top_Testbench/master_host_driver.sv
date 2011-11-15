@@ -1,8 +1,12 @@
 class master_host_driver extends uvm_driver #(packet);
 parameter addr_width_g = 10;
+
 Internal_Ram int_ram;
 string tID;
+logic [7:0] conf_reg_i;
+logic [7:0] clk_reg_i;
 virtual interface mh_intf vif;
+
 //TLM port for scoreboard communication 
 uvm_analysis_port #(packet) sb_rx;
 uvm_analysis_port #(packet) sb_ram;
@@ -64,7 +68,11 @@ task get_and_drive();
 			receive (req.init_addr, req.length);
 		end
 		else if (req.wr_rd == 2)//Config
+		begin
+			clk_reg_i 	= req.clk_reg;
+			conf_reg_i	= req.conf_reg;
 			cfg_dut (req.clk_reg, req.conf_reg, "both");
+		end
 		assert (req.wr_rd inside {0, 1, 2});
 		@(posedge vif.clk);
 		seq_item_port.item_done();
@@ -234,8 +242,8 @@ endtask : get_and_drive
 		pkt.length = burst_len;
 		pkt.init_addr = init_addr;
 		pkt.wr_rd = 1'b0;
-		pkt.conf_reg = 8'd0;
-		pkt.clk_reg = 8'd2;
+		pkt.conf_reg = clk_reg_i;
+		pkt.clk_reg = conf_reg_i;
         foreach(bytes[i])
 		  pkt.data[i] = bytes[i];
 		sb_rx.write(pkt);
