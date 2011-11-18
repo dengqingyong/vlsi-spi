@@ -1,4 +1,4 @@
-parameter num_counts_g	= 100;	//Data width
+parameter num_counts_g	= 600;	//Number of executed sequences
 
 //basic sequence (calls an item)
 class master_host_base_seq extends uvm_sequence #(packet);

@@ -15,12 +15,28 @@ uvm_analysis_port #(packet) sb_ram;
   `uvm_field_object(req, UVM_ALL_ON)
 `uvm_component_utils_end
 
+task inc_clk_reg ();
+	if (clk_reg_i == 8'hFF)
+		clk_reg_i = 8'd2;
+	else
+		clk_reg_i++;
+endtask : inc_clk_reg
+
+task inc_conf_reg ();
+	if (conf_reg_i == 8'd3)
+		conf_reg_i = 8'd0;
+	else
+		conf_reg_i++;
+endtask : inc_conf_reg
+
 function new(string name, uvm_component parent);
   super.new(name,parent);
   tID=get_type_name();
   tID=tID.toupper();
   sb_rx = new ("sb_rx", this);
   sb_ram = new ("sb_ram", this);
+  clk_reg_i = 8'd2;
+  conf_reg_i = 8'd0;
 endfunction : new
 
 virtual function void build_phase(uvm_phase phase);
@@ -50,8 +66,8 @@ task get_and_drive();
 	//Prepare system
 	@(posedge vif.clk);
 	reset_dut();
-	cfg_dut();
-  forever
+	cfg_dut (clk_reg_i, conf_reg_i, "both");  
+	forever
     begin
 		seq_item_port.get_next_item(req);
 		@(posedge vif.clk);
@@ -69,9 +85,9 @@ task get_and_drive();
 		end
 		else if (req.wr_rd == 2)//Config
 		begin
-			clk_reg_i 	= req.clk_reg;
-			conf_reg_i	= req.conf_reg;
-			cfg_dut (req.clk_reg, req.conf_reg, "both");
+			inc_clk_reg;
+			inc_conf_reg;
+			cfg_dut (clk_reg_i, conf_reg_i, "both");
 		end
 		assert (req.wr_rd inside {0, 1, 2});
 		@(posedge vif.clk);
@@ -104,9 +120,9 @@ endtask : get_and_drive
     endtask : reset_dut
    
     virtual task cfg_dut(
-							logic [7:0] clk_div_reg = 8'd2,	//Clock divide factor
-							logic [7:0] cphapol_reg = 8'd0,	//CPOL, CPHA value
-							string who_config = "both"		//Who to config: "master", "slave", "both"
+							input logic [7:0] clk_div_reg = 8'd2,	//Clock divide factor
+							input logic [7:0] cphapol_reg = 8'd0,	//CPOL, CPHA value
+							input string who_config = "both"		//Who to config: "master", "slave", "both"
 						);
         `uvm_info(tID,$sformatf("Start of cfg_dut method"),UVM_LOW)
         @(posedge vif.clk);
@@ -128,7 +144,6 @@ endtask : get_and_drive
 			@(negedge vif.wbm_ack_i);			//Wait until SPI Slave acknowledge
 			vif.wbm_cyc_o	<=	0;
 			@(posedge vif.clk);
-			//TODO: Add assertion for WBM_ERR, and WBM_ACK for 1 cycle only
 		end
 
 		//Config SPI Master
@@ -141,7 +156,7 @@ endtask : get_and_drive
 			//Config Clock Divide Reg
 			vif.wbm_cyc_o	<=	1;
 			vif.wbm_stb_o	<=	1;
-			vif.wbm_adr_o	<=	'{default:0};	//Write Clock Divide Factor Registers
+			vif.wbm_adr_o	<=	10'd0;			//Write Clock Divide Factor Registers
 			vif.wbm_dat_o	<=	clk_div_reg;
 			@(negedge vif.wbm_stall_i);			//Wait until SPI Master is Ready
 			@(posedge vif.clk);
@@ -149,7 +164,6 @@ endtask : get_and_drive
 			@(negedge vif.wbm_ack_i);			//Wait until SPI Master acknowledge
 			vif.wbm_cyc_o	<=	0;
 			@(posedge vif.clk);
-			//TODO: Add assertion for WBM_ERR, and WBM_ACK for 1 cycle only
 
 			//Config CPOL, CPHA Reg.
 			vif.wbm_cyc_o	<=	1;
@@ -162,7 +176,6 @@ endtask : get_and_drive
 			@(negedge vif.wbm_ack_i);		//Wait until SPI Master acknowledge
 			vif.wbm_cyc_o	<=	0;
 			@(posedge vif.clk);
-			//TODO: Add assertion for WBM_ERR, and WBM_ACK for 1 cycle only
 		end
 
 		assert (who_config == "both" || who_config == "master" || who_config == "slave") 
@@ -201,7 +214,6 @@ endtask : get_and_drive
 		@(negedge vif.wbm_ack_i);				//Wait until SPI Master acknowledge
 		vif.wbm_cyc_o	<=	0;
 		@(posedge vif.clk);
-		//TODO: Add assertion for WBM_ERR, and WBM_ACK timing
    endtask : drive
 
     virtual task receive	(
@@ -235,15 +247,14 @@ endtask : get_and_drive
 		@(negedge vif.wbm_ack_i);				//Wait until SPI Master acknowledge
 		vif.wbm_cyc_o	<=	0;
 		@(posedge vif.clk);
-		//TODO: Add assertion for WBM_ERR, and WBM_ACK timing
 		pkt = new();
         pkt.data.delete();
         pkt.data = new[burst_len + 1];
 		pkt.length = burst_len;
 		pkt.init_addr = init_addr;
 		pkt.wr_rd = 1'b0;
-		pkt.conf_reg = clk_reg_i;
-		pkt.clk_reg = conf_reg_i;
+		pkt.conf_reg = conf_reg_i;
+		pkt.clk_reg = clk_reg_i;
         foreach(bytes[i])
 		  pkt.data[i] = bytes[i];
 		sb_rx.write(pkt);
