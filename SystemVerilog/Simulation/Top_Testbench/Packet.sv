@@ -4,8 +4,8 @@ rand bit [7:0] length; 			//Burst Length;
 rand bit [7:0] data []; 		//Payload
 rand logic [9:0] init_addr; 	//Start burst from this address
 rand int wr_rd; 				//'0' - Read ; '1' - Write, '2' - Config
-rand logic [7:0] conf_reg; 		//Configuration Register
-rand logic [7:0] clk_reg; 		//Clock Register
+logic [7:0] conf_reg; 			//Configuration Register
+logic [7:0] clk_reg; 			//Clock Register
 
 `uvm_object_utils_begin(packet)
   `uvm_field_int(length , UVM_ALL_ON|UVM_NOCOMPARE)
@@ -22,25 +22,9 @@ constraint burst_len_c {data.size() + init_addr inside {[1:1024]};}
 
 constraint wr_rd_c {wr_rd inside {0, 1, 2};}
 
-constraint conf_reg_c
-{
-	(wr_rd == 0) -> conf_reg == 8'd0;
-	(wr_rd == 1) -> conf_reg == 8'd0;
-	(wr_rd == 2) -> conf_reg inside {8'd0, 8'd1, 8'd2, 8'd3};
-}
-
-constraint clk_reg_c
-{
-	(wr_rd == 0)  -> clk_reg == 8'd2;
-	(wr_rd == 1)  -> clk_reg == 8'd2;
-	(wr_rd == 2 ) -> clk_reg >= 8'd2;
-}
-
-constraint order1 { solve wr_rd before conf_reg; }
-constraint order2 { solve wr_rd before clk_reg; }
-constraint order3 { solve length before data; }
-constraint order4 { solve data before init_addr; }
-constraint order5 { solve length before init_addr; }
+constraint order1 { solve length before data; }
+constraint order2 { solve data before init_addr; }
+constraint order3 { solve length before init_addr; }
 
 function new(string name="packet");
    super.new(name);
